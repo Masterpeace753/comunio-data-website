@@ -45,9 +45,59 @@ Arbeitspakete:
 - AP-7 Manueller Snapshot-Job fuer Spieler, Teams, Marktwerte
 - AP-8 Grundlegendes Logging und Fehlerbehandlung
 
+Hinweis zur aktuellen Umsetzung:
+- AP-5 bis AP-8 sind als Phase-2 Ergebnisstand umgesetzt.
+
 Ergebnis:
-- Manueller Abruf funktioniert reproduzierbar
-- Erste valide Datensaetze in DB
+- Login-Flow ueber ComunioPy ist technisch vorbereitet und testbar.
+- Migrationsgrundlage fuer PostgreSQL ist umgesetzt.
+- Manueller Snapshot-Lauf schreibt Teams, Spieler und Marktwerte idempotent.
+- Basis-Fehlerbehandlung mit Retry/Backoff und ingest_runs Status-Tracking ist aktiv.
+
+### AP-5 Deliverables (umgesetzt)
+- Backend-Konfiguration fuer Credentials aus AWS Secrets Manager oder ENV.
+- ComunioPy-Client-Bootstrap mit expliziter Login-Validierung.
+- Manueller Runner fuer Login-Flow (ohne Snapshot-Verarbeitung).
+
+### AP-6 Deliverables (umgesetzt)
+- SQL-Migrationen fuer Core-, Timeseries- und Audit/Event-Tabellen.
+- Migration-Runner mit schema_migrations zur Versionsnachverfolgung.
+- Kern-Indizes und Idempotenz-Constraints im Schema.
+
+### AP-7 Deliverables (umgesetzt)
+- Manueller Snapshot-Lauf im Runner (`--mode snapshot`).
+- Snapshot-Normalisierung fuer Teams, Spieler und Marktwerte.
+- Idempotente Upserts auf Tabellenebene.
+- ingest_runs Tracking fuer success/failed und records_written.
+
+### AP-8 Deliverables (umgesetzt)
+- Basis-Error-Handling mit klaren Fehlermeldungen je Pipeline-Schritt.
+- Retry/Backoff fuer Snapshot-Abruf (2s, 4s, 8s, insgesamt 4 Versuche).
+- Operatives Smoke-Runbook fuer AP-5/AP-6 vorhanden und weiterverwendbar.
+
+### AP-5/AP-6 Definition of Done
+- AP-5:
+	- Login-Bootstrap liefert success oder failed mit klarer Ursache.
+	- Keine Secrets im Quellcode oder im Repository.
+- AP-6:
+	- Migrationen lassen sich sequenziell anwenden.
+	- Wiederholte Ausfuehrung erzeugt keine doppelten Tabellen.
+	- Schema umfasst alle fuer AP-7 benoetigten Kernstrukturen.
+
+### AP-7/AP-8 Definition of Done
+- AP-7:
+	- Manuelle Ausfuehrung verarbeitet Snapshotdaten fuer Teams, Spieler, Marktwerte.
+	- Wiederholte Ausfuehrung am gleichen Tag erzeugt keine Duplikate in market_values.
+- AP-8:
+	- Snapshot-Abruf hat Retry/Backoff und bricht nach Maximalversuchen kontrolliert ab.
+	- Fehlerfaelle werden als failed-Lauf in ingest_runs nachvollziehbar.
+
+### AP-5/AP-6 Smoke-Check-Runbook
+- Operativer Prüfpfad ist dokumentiert in `backend/OPERABILITY-AP5-AP6.md`.
+- Verbindliche Gates vor AP-7:
+	- G1 Login-Bootstrap PASS
+	- G2 Migrations-Idempotenz PASS
+	- G3 Schema-Integritaet PASS
 
 ### Phase 3: Automatisierung und Backend-API (Woche 6 bis 10)
 Ziele:

@@ -217,3 +217,49 @@ Kann fuer spaetere Umsetzung vorbereitet, aber nicht voll ausgebaut werden:
 - Exakte Retention-Strategie pro fachlicher Tabelle (über Mindestregeln hinaus).
 - Zeitpunkt fuer produktive Aktivierung erweiterter Audit-Trails.
 
+## 10. AP-6 Umsetzung: Migrationen und Tabellenschnitt
+
+Die AP-6 Umsetzung ist als drei SQL-Migrationen plus Runner umgesetzt:
+
+- 001_core_tables.sql
+	- teams
+	- players
+	- ingest_runs
+- 002_timeseries_tables.sql
+	- market_values
+	- player_points
+	- transfermarket_snapshots
+- 003_events_audit_tables.sql
+	- availability_events
+	- audit_log
+
+### 10.1 Technische Absicherung
+- Die Migrationen sind auf wiederholte Ausfuehrung ausgelegt (CREATE TABLE IF NOT EXISTS).
+- Fortschritt wird in schema_migrations nachgehalten.
+- AP-6 deckt die Persistenzgrundlage ab, nicht die fachliche Befuellung.
+
+### 10.2 Idempotenz-Mechanik
+- market_values: UNIQUE (player_id, snapshot_date)
+- transfermarket_snapshots: UNIQUE (player_id, snapshot_date)
+- player_points: UNIQUE (player_id, season, matchday)
+
+Diese Constraints sind die Basis fuer doppelsichere Wiederholungsläufe in AP-7.
+
+## 11. AP-7 Write-Pfad (manueller Snapshot-Job)
+
+AP-7 nutzt folgende Persistenz-Reihenfolge:
+
+1. ingest_runs als Start-Eintrag anlegen (status=started)
+2. teams upsert
+3. players upsert
+4. market_values upsert mit ingest_run_id
+5. ingest_runs auf success oder failed abschliessen
+
+### 11.1 Idempotenz im Lauf
+- Marktwert-Snapshots werden pro Spieler/Tag eindeutig gehalten.
+- Wiederholte Runs aktualisieren bestehende Tageswerte statt Duplikate zu erzeugen.
+
+### 11.2 Fehlerverhalten
+- Bei Fehlern in der Write-Phase wird die aktive Transaktion zurueckgerollt.
+- Laufstatus wird als failed inkl. Fehlermeldung in ingest_runs dokumentiert.
+

@@ -196,3 +196,43 @@ flowchart LR
   - Detailtiefe der API-Perimeter-Security im fruehen Betrieb (WAF-Regelsatz initial).
   - Zeitpunkt fuer Redis-Einsatz als Pflichtbestandteil (ab Last-/Latenz-Metriken).
 
+  ## 12. Phase-2 Fokus: AP-5 und AP-6
+
+  Dieser Abschnitt gilt nur fuer die aktuelle Umsetzung von AP-5 und AP-6.
+
+  ### 12.1 AP-5 ComunioPy-Integration und Login-Flow
+  - Ingest-Bootstrap ist als separates Backend-Modul umgesetzt.
+  - Credentials werden priorisiert aus AWS Secrets Manager geladen; lokale ENV-Werte sind nur Fallback.
+  - Login-Flow ist auf Session-Validierung begrenzt und endet bewusst vor Snapshot-Verarbeitung.
+  - Fehlerbehandlung fuer Login ist explizit vorhanden und beendet den Lauf mit Status failed.
+
+  ### 12.2 AP-6 Tabellen und Migrationen
+  - Schema-Migrationen sind als versionierte SQL-Dateien umgesetzt.
+  - Eine Migration-Runner-Logik fuehrt neue Migrationen einmalig aus und protokolliert sie in schema_migrations.
+  - Kern-Tabellen, Zeitreihen-Tabellen und Audit/Event-Tabellen sind getrennt in drei Migrationsschritten.
+  - Idempotenz wird im Schema durch UNIQUE-Constraints auf Snapshot-Tabellen abgesichert.
+
+  ### 12.3 Scope-Grenze dieser Umsetzung
+  - Nicht enthalten: automatisierter Scheduler, API-Endpunkte, Frontend-Anbindung.
+  - Diese Punkte bleiben explizit in Phase 3+.
+
+  ## 13. Phase-2 Abschluss: AP-7 und AP-8
+
+  ### 13.1 AP-7 Manueller Snapshot-Flow
+  - Runner-Modus `snapshot` fuehrt die Kette aus:
+    - Login
+    - Snapshot-Abruf
+    - Normalisierung
+    - DB-Persistenz
+  - Persistenz ist in einem klaren Write-Modul gekapselt.
+  - ingest_runs protokolliert jeden Lauf mit Status und Record-Zahl.
+
+  ### 13.2 AP-8 Basis-Robustheit
+  - Snapshot-Abruf nutzt Retry mit Exponential Backoff (2s, 4s, 8s).
+  - Fehler werden kontrolliert propagiert und als failed-Lauf markiert.
+  - Keine Scheduler-Automatisierung in Phase 2; nur manueller Trigger.
+
+  ### 13.3 Trade-offs (Phase-2 Abschluss)
+  - Live-ComunioPy bleibt von Bibliothekskompatibilitaet abhaengig; optionaler Datei-Input fuer lokale deterministische Tests ist vorgesehen.
+  - Fokus liegt auf Datenkonsistenz und Nachvollziehbarkeit vor Performance-Tuning.
+

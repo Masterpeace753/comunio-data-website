@@ -1,0 +1,25 @@
+{
+  "teams": [
+    {
+      "id": 1,
+      "name": "Test Team",
+      "league": "Community",
+      "season": "2026"
+    }
+  ],
+  "players": [
+    {
+      "id": 1001,
+      "name": "Max Mustermann",
+      "position": "MITT",
+      "team_id": 1,
+      "market_value": 1250000
+    }
+  ],
+  "market_values": [
+    {
+      "player_id": 1001,
+      "value_eur": 1250000
+    }
+  ]
+}
