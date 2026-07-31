@@ -64,6 +64,10 @@ Metadaten zu jedem Ingest-Lauf.
 | finished_at | TIMESTAMPTZ | NULL | Endzeitpunkt |
 | records_written | INTEGER | NOT NULL DEFAULT 0 | Anzahl Datensaetze |
 | error_message | TEXT | NULL | Fehlertext |
+| error_code | TEXT | NULL | Sanitizter Fehlercode statt Roh-Exception |
+| correlation_id | TEXT | NULL | Korrelation fuer Run/Logs/Audit |
+| gate_status | TEXT | NULL | Status der Security-Gates S1-S4 |
+| remediation_step | TEXT | NULL | Zuordnung zum Remediation-Schritt |
 
 ### 3.4 market_values
 Zeitreihe der Marktwerte je Spieler.
@@ -180,6 +184,8 @@ Bei groesserer Datenmenge:
 - Positionswerte auf festes Enum begrenzen
 - Ingest-Run muss bei Writes referenzierbar sein
 - Source-Feld fuer Herkunftstransparenz pflegen
+- In Produktion ist als Credential-Quelle nur Secrets Manager zulaessig.
+- Snapshot-Dateiinput darf nur aus erlaubtem Basisverzeichnis und unter Groessenlimit geladen werden.
 
 ## 8. Audit- und Aufbewahrungsregeln
 
@@ -188,6 +194,19 @@ Bei groesserer Datenmenge:
 	- audit_log: mindestens 1 Jahr.
 	- ingest- und API-Logdaten: mindestens 90 Tage.
 - Verschluesselung at rest fuer DB und Backups ist verpflichtend.
+- Security-Ereignisse verwenden sanitizte Fehlertaxonomie statt roher Exception-Nachrichten.
+- Security- und Incident-Logs mindestens 180 Tage online verfuegbar, danach archiviert.
+
+## 12. Konsolidierte Multi-Agent-Ergaenzungen
+
+### 12.1 Priorisierte Massnahmen
+- P1: Security-Policy-Felder in `ingest_runs` und klare Gate-Nachvollziehbarkeit.
+- P2: Erweiterte Auditierbarkeit ueber Korrelation und Fehlertaxonomie.
+- P3: Phasengerechte Retention mit Kostenkontrolle (Hot/Archive).
+
+### 12.2 Trade-offs
+- Mehr Felder in `ingest_runs` erhoehen Modellkomplexitaet, verbessern aber Incident-Analyse und Compliance-Nachweis.
+- Längere Security-Log-Retention erhoeht Speicherkosten, reduziert jedoch forensisches Risiko.
 
 ## 9. Phase-1 Scope (Analyse und Setup)
 

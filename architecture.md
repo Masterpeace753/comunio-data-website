@@ -106,6 +106,13 @@ flowchart LR
   - sichere Session- und Token-Verwaltung
   - Schutz vor Injection und Broken Access Control
 
+### 5.1 Production Security Gates (verbindlich)
+- Gate S1 Credentials: In `prod` und `production` sind nur AWS Secrets Manager Credentials zulaessig. ENV-Fallback ist in Produktion verboten.
+- Gate S2 DB Transport: Datenbankverbindungen muessen TLS mit `sslmode=require` oder staerker erzwingen, Zielprofil `verify-full`.
+- Gate S3 Logging: Lauf- und Fehlerlogs muessen strukturiert sein (`event`, `stage`, `run_id`, `error_code`) und duerfen keine rohen Exception-Details enthalten.
+- Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
+- Gate-Policy: Bei Verstoessen gegen S1-S4 ist ein Production-Deploy blockiert.
+
 ## 6. Verfuegbarkeit und Skalierung
 
 - Ziel: 99.9 Prozent Uptime
@@ -160,6 +167,11 @@ flowchart LR
 | Growth zu Scale | Snapshot-Volumen ueber 100000 pro Tag oder DAU ueber 100 | Read-Replica, erweiterte Cache-Strategie und DB-Partitionierung aktivieren |
 | Scale zu Enterprise | DAU ueber 1000 und Compliance-Checks gruen | Multi-Region-Option und DR-Runbook erweitern |
 
+Ergaenzende Security- und Cost-Gates:
+- Security-Gate vor jedem Deploy: Keine offenen Critical/High Findings und S1-S4 gruene Checks.
+- Cost-Gate MVP: Budget-Warnungen bei 50/80/100 Prozent fuer Dev und Staging aktiv.
+- Cost-Gate Growth: 100 Prozent Tag-Compliance (`Environment`, `Owner`, `Project`, `CostCenter`) und monatlicher Rightsizing-Review.
+
 ### 10.3 Resilienzparameter
 - Ingest-Retry: Exponential Backoff 2s, 4s, 8s, 16s (maximal 4 Versuche).
 - Circuit Breaker: Open State nach 5 aufeinanderfolgenden Fehlern fuer 60 Sekunden.
@@ -185,6 +197,7 @@ flowchart LR
   - Monitoring-Baseline: CloudWatch Logs/Metrics, erste Alarme fuer Ingest-Fehler und API-Health.
   - Kostenkontrolle: Budget-Warnung fuer Dev-Umgebung aktiv.
   - IAM-Baseline: Least Privilege Rollen fuer Ingest und API festgelegt.
+  - Security-Baseline: Secrets-Manager-only in Produktion, DB-TLS-Policy und strukturierte sanitizte Logs als Pflicht.
 
   ### 11.3 Trade-offs (nur Phase 1)
   - Einfaches Setup vor Vollausbau: Fokus auf schnelle, reproduzierbare Startfaehigkeit statt Vollautomatisierung.
@@ -235,4 +248,16 @@ flowchart LR
   ### 13.3 Trade-offs (Phase-2 Abschluss)
   - Live-ComunioPy bleibt von Bibliothekskompatibilitaet abhaengig; optionaler Datei-Input fuer lokale deterministische Tests ist vorgesehen.
   - Fokus liegt auf Datenkonsistenz und Nachvollziehbarkeit vor Performance-Tuning.
+
+  ## 14. Konsolidierte Multi-Agent-Entscheidungen (Phase 2)
+
+  ### 14.1 Priorisierte Massnahmen
+  - P1: Security-Blocking Controls (Credentials-Policy, DB-TLS, Logging-Sanitization, Snapshot-Input-Haertung) verbindlich als Deploy-Gates.
+  - P2: Governance und Reliability (SLO/Fehlerbudget, Incident-Runbook, Auditierbarkeit mit Korrelation).
+  - P3: FinOps-Leitplanken (Tags, Budget-Alarme, Rightsizing-Zyklus) fuer kontrolliertes Wachstum.
+
+  ### 14.2 Trade-offs und Widerspruchsaufloesung
+  - Trade-off Tempo vs Sicherheit: Fruehere harte Gates verlangsamen einzelne Deploys, reduzieren aber signifikant Produktions- und Compliance-Risiko.
+  - Trade-off Debug-Tiefe vs Datenschutz: Sanitizte Standardlogs enthalten weniger Rohdetails; tiefe Diagnose bleibt nur in geschuetzten Kanaelen.
+  - Aufgeloester Widerspruch: Kostenminimum und hohe Verfuegbarkeit werden phasengerecht kombiniert (MVP budgetschonend, HA-Ausbau erst nach Gate-Triggern).
 

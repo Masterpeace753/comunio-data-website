@@ -10,6 +10,18 @@ from src.ingest.comuniopy_client import ComunioLoginError, ComunioPyClient, Comu
 from src.ingest.snapshot_job import run_manual_snapshot
 
 
+def _log(event: str, **fields: object) -> None:
+    payload = " ".join(f"{k}={v}" for k, v in fields.items())
+    if payload:
+        print(f"[INGEST] event={event} {payload}")
+        return
+    print(f"[INGEST] event={event}")
+
+
+def _error_code(exc: Exception) -> str:
+    return exc.__class__.__name__.lower()
+
+
 def _fetch_with_backoff(client: ComunioPyClient, attempts: int = 4) -> dict:
     delays = [2, 4, 8]
     last_error: Exception | None = None
@@ -22,7 +34,7 @@ def _fetch_with_backoff(client: ComunioPyClient, attempts: int = 4) -> dict:
             if idx >= attempts - 1:
                 break
             delay = delays[min(idx, len(delays) - 1)]
-            print(f"[INGEST] retry={idx + 1} wait_seconds={delay} reason={exc}")
+            _log("snapshot_retry", retry=idx + 1, wait_seconds=delay, error_code=_error_code(exc))
             time.sleep(delay)
 
     raise ComunioSnapshotError(f"Snapshot fetch failed after {attempts} attempts: {last_error}")
@@ -40,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     _ = args.run_type
-    print("[INGEST] run_type=manual")
+    _log("run_started", run_type="manual", mode=args.mode)
 
     settings = load_settings()
     client = ComunioPyClient(settings)
@@ -48,22 +60,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         client.login()
     except ComunioLoginError as exc:
-        print(f"[INGEST] status=failed reason={exc}")
+        _log("run_failed", stage="login", error_code=_error_code(exc))
         return 1
 
     if args.mode == "login":
-        print("[INGEST] status=success message=Login flow validated")
+        _log("run_success", stage="login", message="login_validated")
         return 0
 
     if not settings.database_url:
-        print("[INGEST] status=failed reason=DATABASE_URL is required for snapshot mode")
+        _log("run_failed", stage="config", error_code="missing_database_url")
         return 1
 
     try:
         raw_snapshot = _fetch_with_backoff(client)
         normalized_snapshot = client.normalize_snapshot(raw_snapshot)
     except ComunioSnapshotError as exc:
-        print(f"[INGEST] status=failed reason={exc}")
+        _log("run_failed", stage="snapshot", error_code=_error_code(exc))
         return 1
 
     try:
@@ -73,12 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             conn.close()
     except Exception as exc:
-        print(f"[INGEST] status=failed reason={exc}")
+        _log("run_failed", stage="persistence", error_code=_error_code(exc))
         return 1
 
-    print(
-        f"[INGEST] status=success message=Snapshot stored run_id={run_id} records_written={records_written}"
-    )
+    _log("run_success", stage="snapshot", run_id=run_id, records_written=records_written)
     return 0
 
 

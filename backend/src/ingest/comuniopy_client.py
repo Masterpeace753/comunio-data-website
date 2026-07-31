@@ -22,6 +22,7 @@ class ComunioSnapshotError(RuntimeError):
 class ComunioCredentials:
     email: str
     password: str
+    source: str
 
 
 class ComunioPyClient:
@@ -38,17 +39,47 @@ class ComunioPyClient:
         sm = boto3.client("secretsmanager", region_name=self.settings.aws_region)
         response = sm.get_secret_value(SecretId=self.settings.comunio_secret_name)
         payload = json.loads(response["SecretString"])
-        return ComunioCredentials(email=payload["username"], password=payload["password"])
+        return ComunioCredentials(email=payload["username"], password=payload["password"], source="secrets_manager")
 
     def _credentials_from_env(self) -> ComunioCredentials:
         if not self.settings.comunio_email or not self.settings.comunio_password:
             raise ComunioLoginError("Missing COMUNIO_EMAIL/COMUNIO_PASSWORD")
-        return ComunioCredentials(email=self.settings.comunio_email, password=self.settings.comunio_password)
+        return ComunioCredentials(
+            email=self.settings.comunio_email,
+            password=self.settings.comunio_password,
+            source="env",
+        )
 
     def load_credentials(self) -> ComunioCredentials:
+        if self.settings.require_secret_mode and not self.settings.comunio_secret_name:
+            raise ComunioLoginError("COMUNIO_SECRET_NAME is required when COMUNIO_REQUIRE_SECRET_MODE is enabled")
         if self.settings.comunio_secret_name:
             return self._credentials_from_secret()
         return self._credentials_from_env()
+
+    def _load_snapshot_payload(self, path: Path) -> dict[str, Any]:
+        base_dir = Path(self.settings.comunio_snapshot_base_dir).resolve()
+        resolved = path.resolve()
+        if not resolved.is_relative_to(base_dir):
+            raise ComunioSnapshotError(
+                f"Snapshot file must be inside configured base directory: {base_dir}"
+            )
+
+        size = resolved.stat().st_size
+        if size > self.settings.comunio_snapshot_max_bytes:
+            raise ComunioSnapshotError(
+                f"Snapshot file exceeds max allowed size ({self.settings.comunio_snapshot_max_bytes} bytes)"
+            )
+
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ComunioSnapshotError("Snapshot payload must be a JSON object")
+
+        for key in ("teams", "players", "market_values"):
+            value = payload.get(key, [])
+            if not isinstance(value, list):
+                raise ComunioSnapshotError(f"Snapshot field '{key}' must be a JSON array")
+        return payload
 
     @staticmethod
     def _find_constructor(module: Any):
@@ -180,7 +211,7 @@ class ComunioPyClient:
             path = Path(self.settings.comunio_snapshot_file)
             if not path.exists():
                 raise ComunioSnapshotError(f"Snapshot file not found: {path}")
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = self._load_snapshot_payload(path)
             return {
                 "teams": payload.get("teams", []),
                 "players": payload.get("players", []),

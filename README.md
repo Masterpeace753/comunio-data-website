@@ -1,5 +1,7 @@
 # Comunio Data Website
 
+Release-Version: 0.2.1 (Security Patch)
+
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 
 ## Projektziel

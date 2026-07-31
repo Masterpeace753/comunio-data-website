@@ -106,6 +106,8 @@ Ziele:
 Arbeitspakete:
 - AP-9 Scheduler fuer taegliche Runs
 - AP-10 Idempotenz-Regeln und Retry-Strategien
+- AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung)
+- AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung)
 - AP-11 FastAPI-Endpunkte fuer Spieler, Teams, Historie, Transfermarkt
 - AP-12 Delta-Berechnungen in API
 - AP-13 API-Tests und Performance-Baselines
@@ -136,6 +138,7 @@ Ziele:
 Arbeitspakete:
 - AP-19 Lasttests und Caching-Strategie
 - AP-20 Security-Hardening nach OWASP Top 10
+- AP-20a FinOps-Controls (Tag-Compliance, Budget-Alarme, monatlicher Rightsizing-Review)
 - AP-21 DSGVO-Readiness (Datenfluss, Protokollierung, Prozesse)
 - AP-22 CI/CD-Pipeline mit automatisierten Tests
 - AP-23 Go-Live-Checkliste und Deployment
@@ -229,6 +232,8 @@ Diese Entscheidungen sind als Blocker zuerst verbindlich zu treffen:
 - Taeglicher Lauf ist ueber 7 Tage stabil.
 - API P95 fuer Standardendpunkte liegt unter 500 ms.
 - API-Testabdeckung liegt bei mindestens 75 Prozent.
+- Security-Gates S1-S4 sind ohne Verletzung aktiv.
+- In Produktion: 0 Runs mit ENV-Credentials.
 
 ### M3 (Woche 17)
 - Frontend-Hauptseiten erreichen Ladezeit unter 2 Sekunden.
@@ -239,6 +244,7 @@ Diese Entscheidungen sind als Blocker zuerst verbindlich zu treffen:
 - Security-Scan ohne offene High/Critical Findings.
 - Backup/Restore-Test erfolgreich.
 - CI/CD fuehrt Build, Tests und Deployments reproduzierbar aus.
+- Release nur mit gruenem Gate-Report (kein Override fuer Critical/High).
 
 ## 12. Sprint-Backlog fuer die naechsten 2 Sprints
 
@@ -250,6 +256,26 @@ Ziel: Architektur- und Delivery-Basis ohne Blocker herstellen.
 - Story 3: Migration-Framework und Initialschema inkl. Constraints und Indizes aufsetzen.
 - Story 4: CI-Baseline mit Linting, Dependency-Check und Branch-Schutz aktivieren.
 - Story 5: ComunioPy-Research-Spike mit dokumentiertem Datenmapping abschliessen.
+
+## 16. Security-Remediation-Sequenz (konsolidiert)
+
+Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
+1. Credentials-Policy: Produktion nur Secrets Manager, kein ENV-Fallback.
+2. DB-Transport-Policy: TLS `sslmode=require` oder staerker als Laufzeit-Gate.
+3. Logging-Sanitization: keine rohen Exceptions, strukturierte `error_code`-Logs.
+4. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
+5. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
+
+## 17. Konsolidierte Trade-offs und offene Entscheidungen
+
+### 17.1 Trade-offs
+- Strikte Security-Gates verlangsamen kurzfristig Deployments, reduzieren aber Produktionsrisiko.
+- Erweiterte Logging- und Audit-Anforderungen erhoehen Betriebsaufwand, verbessern Incident-Reaktion.
+- Fruehe FinOps-Gates begrenzen Experimentierfreiheit, stabilisieren jedoch Kostenpfad.
+
+### 17.2 Offene Entscheidungen
+- Zielniveau fuer DB-TLS in Produktion (`require` Mindestniveau, `verify-full` Zielniveau) inkl. CA-Handling.
+- Exakter Umfang der geschuetzten Debug-Logs fuer tiefe Störungsanalyse.
 
 ## 13. Phase-1 Umsetzungscheckliste (konsolidiert aus 5 Agent-Beitraegen)
 
