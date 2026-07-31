@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: 0.2.1 (Security Patch)
+Release-Version: 0.3.0 (AWS Infrastructure Baseline)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 
@@ -72,6 +72,7 @@ Hinweis fuer lokale, deterministische Tests:
 
 - AP-5/AP-6 Runbook: [backend/OPERABILITY-AP5-AP6.md](backend/OPERABILITY-AP5-AP6.md)
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
+- AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
 
 Verbindliche Gates vor dem naechsten Ausbau:
 - G1 Login-Bootstrap

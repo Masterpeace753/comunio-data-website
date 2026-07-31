@@ -1,0 +1,14 @@
+aws_region                   = "eu-central-1"
+project_name                 = "comunio"
+environment                  = "prod"
+create_network               = true
+create_database              = true
+image_tag                    = "latest"
+enable_schedule              = false
+assign_public_ip             = true
+comunio_snapshot_file        = "/app/tests/sample_snapshot.json"
+db_backup_retention_days     = 1
+tags = {
+  Owner      = "team-comunio"
+  CostCenter = "sports-data"
+}

@@ -60,3 +60,16 @@ docker-compose.override.yml
 
 # Misc
 .cache/
+
+# Terraform local state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!.tfvars.example
