@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import boto3
+import requests
 
 from src.config import Settings
+
+_API_BASE = "https://api.comunio.de"
+_LOGIN_ENDPOINT = _API_BASE + "/login"
+_PAGE_SIZE = 100
 
 
 class ComunioLoginError(RuntimeError):
@@ -26,11 +31,14 @@ class ComunioCredentials:
 
 
 class ComunioPyClient:
-    """AP-7 client for ComunioPy login and manual snapshot extraction."""
+    """Client for the Comunio REST API (api.comunio.de)."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._provider: Any = None
+        self._session: requests.Session | None = None
+        self._user_id: str = ""
+        self._community_id: str = ""
+        self._community_name: str = ""
 
     def _credentials_from_secret(self) -> ComunioCredentials:
         if not self.settings.aws_region or not self.settings.comunio_secret_name:
@@ -90,66 +98,25 @@ class ComunioPyClient:
         return None
 
     @staticmethod
-    def _to_dict(item: Any) -> dict[str, Any]:
-        if isinstance(item, dict):
-            return item
-        if hasattr(item, "__dict__"):
-            return dict(item.__dict__)
-        result: dict[str, Any] = {}
-        for attr in dir(item):
-            if attr.startswith("_"):
-                continue
-            try:
-                value = getattr(item, attr)
-            except Exception:
-                continue
-            if callable(value):
-                continue
-            result[attr] = value
-        return result
-
-    @staticmethod
-    def _call_first(obj: Any, names: tuple[str, ...]):
-        for name in names:
-            fn = getattr(obj, name, None)
-            if callable(fn):
-                return fn()
-        return None
-
-    @staticmethod
     def _get_any(d: dict[str, Any], keys: tuple[str, ...], default: Any = None):
         for k in keys:
             if k in d and d[k] is not None:
                 return d[k]
         return default
 
-    def _extract_team_id(self, raw: dict[str, Any]) -> int | None:
-        direct = self._get_any(raw, ("team_id", "comunio_team_id", "teamId"))
-        if direct is not None:
-            return int(direct)
-
-        team = raw.get("team")
-        if isinstance(team, dict):
-            nested = self._get_any(team, ("id", "team_id", "comunio_team_id"))
-            if nested is not None:
-                return int(nested)
-        return None
-
     @staticmethod
     def _normalize_position(raw_position: Any) -> str:
         mapping = {
-            "TW": "TW",
-            "GK": "TW",
-            "TOR": "TW",
-            "ABW": "ABW",
-            "DEF": "ABW",
-            "VERTEIDIGER": "ABW",
-            "MITT": "MITT",
-            "MF": "MITT",
-            "MID": "MITT",
-            "ST": "ST",
-            "FW": "ST",
-            "STR": "ST",
+            # Comunio REST API values
+            "KEEPER": "TW",
+            "DEFENDER": "ABW",
+            "MIDFIELDER": "MITT",
+            "STRIKER": "ST",
+            # Legacy / German abbreviations
+            "TW": "TW", "GK": "TW", "TOR": "TW",
+            "ABW": "ABW", "DEF": "ABW", "VERTEIDIGER": "ABW",
+            "MITT": "MITT", "MF": "MITT", "MID": "MITT",
+            "ST": "ST", "FW": "ST", "STR": "ST",
         }
         value = str(raw_position or "").upper().strip()
         if value in mapping:
@@ -157,55 +124,56 @@ class ComunioPyClient:
         raise ComunioSnapshotError(f"Unsupported position value: {raw_position}")
 
     def login(self) -> None:
-        """Validate login and bind an API provider instance."""
+        """Authenticate against the Comunio REST API and store session state."""
         if self.settings.comunio_snapshot_file:
-            # Local deterministic AP-7 mode: no external login required.
-            self._provider = object()
+            # Fixture mode: no network login needed.
+            self._session = requests.Session()
             return
 
         creds = self.load_credentials()
 
-        provider_instance: Any = None
-        last_error: Exception | None = None
+        s = requests.Session()
+        s.headers["User-Agent"] = "Mozilla/5.0"
 
-        try:
-            import comuniopy as module  # type: ignore
-            ctor = self._find_constructor(module)
-            if ctor is None:
-                raise ComunioLoginError("No compatible constructor in comuniopy module")
-            provider_instance = ctor(creds.email, creds.password)
-            if hasattr(provider_instance, "login"):
-                provider_instance.login()
-            self._provider = provider_instance
-            return
-        except Exception as exc:
-            last_error = exc
+        r = s.post(
+            _LOGIN_ENDPOINT,
+            data={"username": creds.email, "password": creds.password, "grant_type": "password"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            raise ComunioLoginError(f"Login failed ({r.status_code}): {r.text[:200]}")
 
-        # Fallback for package exposing old module naming.
-        try:
-            import ComunioPy as module  # type: ignore
-            ctor = self._find_constructor(module)
-            if ctor is None:
-                raise ComunioLoginError("No compatible constructor in ComunioPy module")
-            provider_instance = ctor(creds.email, creds.password)
-            if hasattr(provider_instance, "login"):
-                provider_instance.login()
-            self._provider = provider_instance
-            return
-        except Exception as exc:
-            last_error = exc
+        token = r.json().get("access_token")
+        if not token:
+            raise ComunioLoginError("No access_token in login response")
 
-        message = "Unable to validate ComunioPy login with current library API"
-        if last_error:
-            message = f"{message}: {last_error}"
-        raise ComunioLoginError(message)
+        s.headers["Authorization"] = f"Bearer {token}"
+
+        root = s.get(_API_BASE + "/", timeout=30)
+        if root.status_code != 200:
+            raise ComunioLoginError(f"Failed to fetch user info ({root.status_code})")
+
+        user = root.json().get("user", {})
+        uid = str(user["id"])
+        self._session = s
+        self._user_id = uid
+
+        # Community ID is in the full user profile, not the root summary.
+        user_r = s.get(f"{_API_BASE}/users/{uid}", timeout=30)
+        if user_r.status_code != 200:
+            raise ComunioLoginError(f"Failed to fetch user profile ({user_r.status_code})")
+        user_profile = user_r.json()
+        community = user_profile.get("community") or {}
+        self._community_id = str(community.get("id", ""))
+        self._community_name = str(community.get("name", ""))
 
     def fetch_snapshot(self) -> dict[str, list[dict[str, Any]]]:
-        """Fetch teams, players and market values for AP-7 manual snapshot run.
+        """Fetch teams, players and market values.
 
-        Supports two data sources:
-        1) Live provider (after successful login)
-        2) Local JSON file via COMUNIO_SNAPSHOT_FILE for deterministic tests
+        Supports two modes:
+        1) Live: paginate the Comunio REST API (requires prior login())
+        2) Fixture: load from COMUNIO_SNAPSHOT_FILE (deterministic tests)
         """
         if self.settings.comunio_snapshot_file:
             path = Path(self.settings.comunio_snapshot_file)
@@ -218,32 +186,67 @@ class ComunioPyClient:
                 "market_values": payload.get("market_values", []),
             }
 
-        if self._provider is None:
-            raise ComunioSnapshotError("Provider is not initialized; call login() first")
+        if self._session is None or not self._community_id:
+            raise ComunioSnapshotError("Not logged in; call login() first")
 
-        teams_raw = self._call_first(self._provider, ("get_teams", "teams", "fetch_teams"))
-        players_raw = self._call_first(self._provider, ("get_players", "players", "fetch_players"))
-        market_raw = self._call_first(
-            self._provider,
-            ("get_market_values", "market_values", "fetch_market_values"),
-        )
+        all_players: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            r = self._session.get(
+                f"{_API_BASE}/communities/{self._community_id}/players",
+                params={"limit": _PAGE_SIZE, "offset": offset},
+                timeout=30,
+            )
+            if r.status_code != 200:
+                raise ComunioSnapshotError(f"Failed to fetch players ({r.status_code}): {r.text[:200]}")
+            data = r.json()
+            batch: list[dict[str, Any]] = data.get("tradables", [])
+            all_players.extend(batch)
+            if len(all_players) >= data.get("totalHits", 0) or not batch:
+                break
+            offset += _PAGE_SIZE
 
-        teams_list = [self._to_dict(x) for x in (teams_raw or [])]
-        players_list = [self._to_dict(x) for x in (players_raw or [])]
-        market_list = [self._to_dict(x) for x in (market_raw or [])]
+        # Derive teams (community members) from player owner field.
+        teams_seen: dict[int, dict[str, Any]] = {}
+        for p in all_players:
+            owner = p.get("owner")
+            if owner and owner.get("id") not in teams_seen:
+                teams_seen[int(owner["id"])] = {
+                    "comunio_team_id": int(owner["id"]),
+                    "name": str(owner.get("name", "")).strip(),
+                    "league": self._community_name or None,
+                    "season": None,
+                }
 
-        # Fallback: derive market values from player payload if explicit endpoint is unavailable.
-        if not market_list:
-            for p in players_list:
-                player_id = self._get_any(p, ("id", "player_id", "comunio_player_id", "comunioId"))
-                value = self._get_any(p, ("market_value", "marketValue", "value_eur", "value"))
-                if player_id is not None and value is not None:
-                    market_list.append({"player_id": player_id, "value_eur": value})
+        players_out: list[dict[str, Any]] = []
+        market_values_out: list[dict[str, Any]] = []
+        for p in all_players:
+            pid = p.get("id")
+            name = p.get("name")
+            position = p.get("position")
+            if pid is None or not name or position is None:
+                continue
+            try:
+                normalized_pos = self._normalize_position(position)
+            except ComunioSnapshotError:
+                continue
+
+            club = p.get("club") or {}
+            players_out.append({
+                "comunio_player_id": int(pid),
+                "name": str(name),
+                "position": normalized_pos,
+                "team_comunio_id": int(club["id"]) if club.get("id") else None,
+            })
+            market_values_out.append({
+                "comunio_player_id": int(pid),
+                "value_eur": int(p.get("quotedprice") or 0),
+            })
 
         return {
-            "teams": teams_list,
-            "players": players_list,
-            "market_values": market_list,
+            "teams": list(teams_seen.values()),
+            "players": players_out,
+            "market_values": market_values_out,
         }
 
     def normalize_snapshot(self, snapshot: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
@@ -252,26 +255,24 @@ class ComunioPyClient:
         values_out: list[dict[str, Any]] = []
 
         for t in snapshot.get("teams", []):
-            raw = self._to_dict(t)
-            team_id = self._get_any(raw, ("id", "team_id", "comunio_team_id", "comunioId"))
-            name = self._get_any(raw, ("name", "team_name"))
+            team_id = self._get_any(t, ("comunio_team_id", "id", "team_id", "comunioId"))
+            name = self._get_any(t, ("name", "team_name"))
             if team_id is None or not name:
                 continue
             teams_out.append(
                 {
                     "comunio_team_id": int(team_id),
                     "name": str(name),
-                    "league": self._get_any(raw, ("league", "community")),
-                    "season": self._get_any(raw, ("season",)),
+                    "league": self._get_any(t, ("league", "community")),
+                    "season": self._get_any(t, ("season",)),
                 }
             )
 
         for p in snapshot.get("players", []):
-            raw = self._to_dict(p)
-            player_id = self._get_any(raw, ("id", "player_id", "comunio_player_id", "comunioId"))
-            name = self._get_any(raw, ("name", "player_name"))
-            position = self._get_any(raw, ("position", "pos"))
-            team_id = self._extract_team_id(raw)
+            player_id = self._get_any(p, ("comunio_player_id", "id", "player_id", "comunioId"))
+            name = self._get_any(p, ("name", "player_name"))
+            position = self._get_any(p, ("position", "pos"))
+            team_comunio_id = self._get_any(p, ("team_comunio_id", "team_id"))
             if player_id is None or not name or position is None:
                 continue
             players_out.append(
@@ -279,14 +280,13 @@ class ComunioPyClient:
                     "comunio_player_id": int(player_id),
                     "name": str(name),
                     "position": self._normalize_position(position),
-                    "team_comunio_id": team_id,
+                    "team_comunio_id": int(team_comunio_id) if team_comunio_id is not None else None,
                 }
             )
 
         for m in snapshot.get("market_values", []):
-            raw = self._to_dict(m)
-            player_id = self._get_any(raw, ("player_id", "id", "comunio_player_id", "comunioId"))
-            value = self._get_any(raw, ("value_eur", "value", "market_value", "marketValue"))
+            player_id = self._get_any(m, ("comunio_player_id", "player_id", "id", "comunioId"))
+            value = self._get_any(m, ("value_eur", "value", "market_value", "marketValue"))
             if player_id is None or value is None:
                 continue
             values_out.append(
@@ -301,3 +301,4 @@ class ComunioPyClient:
             "players": players_out,
             "market_values": values_out,
         }
+

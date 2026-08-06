@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         client.login()
     except ComunioLoginError as exc:
-        _log("run_failed", stage="login", error_code=_error_code(exc))
+        _log("run_failed", stage="login", error_code=_error_code(exc), detail=str(exc))
         return 1
 
     if args.mode == "login":
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         raw_snapshot = _fetch_with_backoff(client)
         normalized_snapshot = client.normalize_snapshot(raw_snapshot)
     except ComunioSnapshotError as exc:
-        _log("run_failed", stage="snapshot", error_code=_error_code(exc))
+        _log("run_failed", stage="snapshot", error_code=_error_code(exc), detail=str(exc))
         return 1
 
     try:
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             conn.close()
     except Exception as exc:
-        _log("run_failed", stage="persistence", error_code=_error_code(exc))
+        _log("run_failed", stage="persistence", error_code=_error_code(exc), detail=str(exc))
         return 1
 
     _log("run_success", stage="snapshot", run_id=run_id, records_written=records_written)
