@@ -82,6 +82,18 @@ def main(argv: list[str] | None = None) -> int:
         conn = connect(settings.database_url)
         try:
             run_id, records_written = run_manual_snapshot(conn, normalized_snapshot)
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM ingest_runs")
+                ingest_runs_count = int(cur.fetchone()[0])
+                cur.execute("SELECT COUNT(*) FROM market_values")
+                market_values_count = int(cur.fetchone()[0])
+            _log(
+                "db_verify",
+                run_id=run_id,
+                records_written=records_written,
+                ingest_runs_count=ingest_runs_count,
+                market_values_count=market_values_count,
+            )
         finally:
             conn.close()
     except Exception as exc:

@@ -96,3 +96,40 @@ resource "aws_security_group" "ecs" {
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-ecs" })
 }
+
+resource "aws_security_group" "secretsmanager_endpoint" {
+  count = var.create_network ? 1 : 0
+
+  name        = "${local.name_prefix}-secretsmanager-endpoint"
+  description = "Allow ECS tasks to reach Secrets Manager through a VPC endpoint"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [local.runtime_primary_security_group_id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-secretsmanager-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  count = var.create_network ? 1 : 0
+
+  vpc_id              = local.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.secretsmanager_endpoint[0].id]
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-secretsmanager-endpoint" })
+}
