@@ -86,7 +86,7 @@ Täglicher Datenabruf wird über einen orchestrierten Batch-Job realisiert, der 
 
 Der Job nutzt Idempotenz-Prinzipien, um bei Wiederholungen keine Duplikate zu erzeugen, und beinhaltet Fehlerbehandlung mit automatischen Wiederholungen.
 
-Für den Comunio-Datenabruf wird das Tool ComunioPy verwendet, das eine einfache und zuverlässige Schnittstelle zur Comunio-API bietet.
+Für den Comunio-Datenabruf wird ein eigener `ComunioPyClient`-Adapter verwendet, der eine kontrollierte Schnittstelle zur Comunio-REST-API bietet.
 
 Monitoring und Alerts sind integriert, um Ausfälle oder Verzögerungen frühzeitig zu erkennen und zu beheben.
 

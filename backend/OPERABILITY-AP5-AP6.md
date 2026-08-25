@@ -159,13 +159,13 @@ Recovery:
 1. Set COMUNIO_EMAIL and COMUNIO_PASSWORD, or
 2. Set AWS_REGION and COMUNIO_SECRET_NAME for secret mode.
 
-### F2 Login fails due to incompatible comuniopy API
+### F2 Login fails due to Comunio REST API or adapter incompatibility
 Symptoms:
-- `Unable to validate ComunioPy login with current library API`
+- `Unable to validate Comunio login with current adapter/API contract`
 
 Recovery:
-1. Check installed comuniopy version.
-2. Align wrapper logic in src/ingest/comuniopy_client.py with active constructor in library.
+1. Check the Comunio REST API response and status code.
+2. Align `src/ingest/comuniopy_client.py` with the current API contract.
 
 ### F3 Migration runner fails on DB connection
 Symptoms:

@@ -3,7 +3,7 @@
 ## 1. Kontext und Leitplanken
 Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit folgenden festen Vorgaben:
 
-- Datenquelle fuer Comunio-Daten: nur ComunioPy
+- Datenquelle fuer Comunio-Daten: Comunio-REST-API, angesprochen ueber den eigenen `ComunioPyClient`-Adapter
 - Architektur: Microservices, REST-Schnittstellen
 - Plattform: AWS fuer Backend und Datenbank, Vercel fuer Frontend
 - Betrieb: containerisiert mit Docker und orchestriert in Kubernetes
@@ -22,7 +22,7 @@ flowchart LR
     BFF --> C[(Redis Cache)]
 
     subgraph Data Pipeline
-      SCH[Scheduler<br/>EventBridge oder CronJob] --> ING[Ingest Service<br/>Python + ComunioPy]
+      SCH[Scheduler<br/>EventBridge oder CronJob] --> ING[Ingest Service<br/>Python + eigener ComunioPyClient]
       ING --> DB
       ING --> OBS[Logs/Metrics/Alerts]
     end
@@ -35,7 +35,7 @@ flowchart LR
 
 ### 3.1 Ingest Service
 - Verantwortung:
-  - Login und Datenabruf ueber ComunioPy
+  - Login und Datenabruf ueber den eigenen `ComunioPyClient` gegen die Comunio-REST-API
   - Snapshot-Erzeugung fuer Marktwerte, Transfermarkt und Punktedaten
   - Idempotentes Schreiben in die Datenbank
 - Trigger:
@@ -93,7 +93,7 @@ flowchart LR
 ## 4. Datenfluss
 
 1. Scheduler startet Ingest-Run.
-2. Ingest ruft Daten ueber ComunioPy ab.
+2. Ingest ruft Daten ueber den `ComunioPyClient` aus der Comunio-REST-API ab.
 3. Daten werden validiert, normalisiert und idempotent gespeichert.
 4. API liest normalisierte Daten und liefert aggregierte Antworten.
 5. Frontend visualisiert die Daten und aktualisiert Dashboards.
@@ -165,7 +165,7 @@ flowchart LR
 
 ## 9. Architekturentscheidungen
 
-- ComunioPy-only reduziert Integrationsrisiko und verbessert Wartbarkeit.
+- Ein eigener Comunio-REST-Adapter reduziert Integrationsrisiko und verbessert Wartbarkeit.
 - Snapshot-Modell ermoeglicht reproduzierbare Historie und robuste Delta-Berechnung.
 - Microservice-Schnitt zwischen Ingest und API verbessert Skalierbarkeit und Ausfallsicherheit.
 - Vercel fuer Frontend beschleunigt Deployment und globale Auslieferung.
@@ -234,7 +234,7 @@ Ergaenzende Security- und Cost-Gates:
 
   Dieser Abschnitt gilt nur fuer die aktuelle Umsetzung von AP-5 und AP-6.
 
-  ### 12.1 AP-5 ComunioPy-Integration und Login-Flow
+  ### 12.1 AP-5 Comunio-REST-Adapter und Login-Flow
   - Ingest-Bootstrap ist als separates Backend-Modul umgesetzt.
   - Credentials werden priorisiert aus AWS Secrets Manager geladen; lokale ENV-Werte sind nur Fallback.
   - Login-Flow ist auf Session-Validierung begrenzt und endet bewusst vor Snapshot-Verarbeitung.
@@ -267,7 +267,7 @@ Ergaenzende Security- und Cost-Gates:
   - Keine Scheduler-Automatisierung in Phase 2; nur manueller Trigger.
 
   ### 13.3 Trade-offs (Phase-2 Abschluss)
-  - Live-ComunioPy bleibt von Bibliothekskompatibilitaet abhaengig; optionaler Datei-Input fuer lokale deterministische Tests ist vorgesehen.
+  - Der Live-Adapter bleibt von der Stabilitaet und dem Vertrag der Comunio-REST-API abhaengig; optionaler Datei-Input fuer lokale deterministische Tests ist vorgesehen.
   - Fokus liegt auf Datenkonsistenz und Nachvollziehbarkeit vor Performance-Tuning.
 
   ## 14. Konsolidierte Multi-Agent-Entscheidungen (Phase 2)

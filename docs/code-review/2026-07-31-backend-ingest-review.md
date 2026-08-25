@@ -89,4 +89,4 @@ print("[INGEST] status=failed reason=login_failed")
 
 ## Residual Risks / Testing Gaps
 - No dedicated automated security tests were found for transport security policy, log sanitization, or file-path hardening.
-- Dependency-level security posture (boto3/comuniopy/psycopg2 CVEs) was not assessed in this review.
+- Dependency-level security posture (boto3/psycopg2 and the other packages in `backend/requirements.txt`) was not assessed in this review.

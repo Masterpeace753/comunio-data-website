@@ -50,7 +50,7 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 ## To‑Do (erste 2 Wochen)
 1. Repo + README erstellen  
 2. DB‑Schema implementieren  
-3. ComunioPy‑Login + Team‑Abruf testen  
+3. Comunio-REST-Login + Team-Abruf testen
 4. Snapshot‑Job implementieren  
 5. Delta‑Berechnung implementieren  
 6. Transfermarkt‑Abruf testen  
@@ -59,6 +59,6 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 
 ## Persistenz der Entscheidung
 - Entscheidung im README verankert  
-- CI‑Check prüft ComunioPy‑Import  
+- CI-Check prueft den eigenen ComunioPyClient und seine REST-Adapter-Tests
 - Dokumentation im `/docs`‑Ordner  
 
