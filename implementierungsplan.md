@@ -104,7 +104,7 @@ Ziele:
 - Taeglicher Abruf und API als Zugriffsschicht
 
 Arbeitspakete:
-- AP-9 Scheduler fuer taegliche Runs
+- AP-9 Scheduler fuer taegliche Runs mit AWS Tools
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung)
@@ -206,10 +206,17 @@ Massnahme: Strikte Meilensteine, Scope-Management, priorisierte Must-have-Liste.
 - Runbook fuer Stoerungsbehebung mit klaren Eskalationswegen
 
 ## 9. Naechste konkrete Schritte
-1. Architektur und Datenmodell intern freigeben.
-2. AP-5 bis AP-8 als erstes Sprint-Backlog schneiden.
-3. Technisches Kickoff mit Backend, Frontend, DevOps und Security durchfuehren.
-4. Erfolgskriterien fuer M1 schriftlich abnehmen.
+Der aktuelle Stand liegt am Uebergang von Phase 2 zu Phase 3:
+- AP-5 bis AP-8 sind auf Code- und Dokumentationsebene umgesetzt.
+- AWS-Infrastruktur, Migrationen und ein manueller Snapshot im Fixture-Modus sind End-to-End validiert.
+- Backend-Tests bestehen; ein Live-Nachweis mit echten Comunio-Credentials steht noch aus.
+
+Naechste Schritte in verbindlicher Reihenfolge:
+1. AP-10a Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
+2. Terraform-State aus dem Repository entfernen beziehungsweise sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
+3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ausfuehren und die geschriebenen Daten fachlich pruefen.
+4. Nach bestandenem Security- und Live-Gate AP-9 als taeglichen EventBridge-Scheduler produktiv aktivieren und ueber mehrere Laeufe beobachten.
+5. Anschliessend AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
 
 ## 10. Technische Entscheidungen vor Start Phase 2
 
@@ -246,16 +253,23 @@ Diese Entscheidungen sind als Blocker zuerst verbindlich zu treffen:
 - CI/CD fuehrt Build, Tests und Deployments reproduzierbar aus.
 - Release nur mit gruenem Gate-Report (kein Override fuer Critical/High).
 
-## 12. Sprint-Backlog fuer die naechsten 2 Sprints
+## 12. Priorisiertes Rest-Backlog fuer die naechsten 2 Sprints
 
-### Sprint 1 (Woche 1 bis 2)
-Ziel: Architektur- und Delivery-Basis ohne Blocker herstellen.
+### Sprint 3 (Security und Live-Betrieb)
+Ziel: Produktions-Gates schliessen und den Live-Ingest belastbar nachweisen.
 
-- Story 1: Technische Entscheidungen finalisieren und als ADRs dokumentieren.
-- Story 2: Lokale Dev-Umgebung mit Docker Compose fuer DB, Backend und Frontend bereitstellen.
-- Story 3: Migration-Framework und Initialschema inkl. Constraints und Indizes aufsetzen.
-- Story 4: CI-Baseline mit Linting, Dependency-Check und Branch-Schutz aktivieren.
-- Story 5: ComunioPy-Research-Spike mit dokumentiertem Datenmapping abschliessen.
+- Story 1: Secrets-Manager-Pflicht ohne ENV-Fallback erzwingen.
+- Story 2: DB-TLS, Logging-Sanitization und Snapshot-Input-Haertung als Laufzeit- und Test-Gates absichern.
+- Story 3: Terraform-State sicher verwalten und exponierte sensible Werte rotieren.
+- Story 4: Live-Kompatibilitaet des ComunioPy-Adapters sowie einen produktionsnahen Snapshot-Lauf validieren.
+
+### Sprint 4 (Automatisierung und API)
+Ziel: Taeglichen Ingest und die erste API-Zugriffsschicht bereitstellen.
+
+- Story 1: AP-9 EventBridge-Scheduler aktivieren, beobachten und mit mehreren erfolgreichen Laeufen nachweisen.
+- Story 2: AP-10 Idempotenz- und Retry-Regeln unter wiederholten beziehungsweise fehlerhaften Laeufen testen.
+- Story 3: AP-11 FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
+- Story 4: API-Tests und erste Performance-Baselines etablieren.
 
 ## 16. Security-Remediation-Sequenz (konsolidiert)
 
