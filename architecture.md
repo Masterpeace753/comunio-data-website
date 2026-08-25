@@ -40,11 +40,19 @@ flowchart LR
   - Idempotentes Schreiben in die Datenbank
 - Trigger:
   - Stufe 1 manuell
-  - ab Stufe 2 taeglich geplant (z. B. 02:00)
+  - ab Stufe 2 taeglich geplant (z. B. 06:00 UTC)
+- AP-9-Betrieb: EventBridge startet den ECS-Fargate-Task taeglich um 06:00 UTC mit `run_type=scheduled`.
+- AP-9-Resilienz: EventBridge verwendet zwei Retries innerhalb einer Stunde; danach wird das Ereignis in der verschluesselten SQS-DLQ abgelegt.
 - Fehlerbehandlung:
   - Retry mit Exponential Backoff
   - Circuit-Breaker fuer externe API-Fehler
   - Alert bei wiederholtem Fehler oder leerem Snapshot
+
+### 3.1.1 AP-9 Scheduler-Betriebsvertrag
+- Die aktive Rule `comunio-prod-snapshot-schedule` verwendet die freigegebene Cron-Konfiguration und startet genau einen Fargate-Task pro Ausfuehrung.
+- Der Task nutzt eine gepinnte Fargate-Plattformversion und schreibt `run_started`, `db_verify` sowie `run_success` oder `run_failed` in CloudWatch.
+- Fachliche Idempotenz bleibt ueber die bestehenden Snapshot-Constraints erhalten; ein erneuter Lauf darf keine doppelten Marktwertzeilen erzeugen.
+- Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis.
 
 ### 3.2 Backend API Service (FastAPI)
 - Verantwortung:

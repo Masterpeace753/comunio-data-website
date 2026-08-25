@@ -27,14 +27,14 @@ locals {
     },
     var.tags,
   )
-  vpc_id                         = coalesce(var.vpc_id, try(aws_vpc.main[0].id, null))
-  public_subnet_ids              = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : [for subnet in aws_subnet.public : subnet.id]
-  private_subnet_ids             = length(var.private_subnet_ids) > 0 ? var.private_subnet_ids : [for subnet in aws_subnet.private : subnet.id]
-  runtime_subnet_ids             = length(var.subnet_ids) > 0 ? var.subnet_ids : (var.assign_public_ip ? local.public_subnet_ids : local.private_subnet_ids)
-  runtime_security_group_ids     = length(var.security_group_ids) > 0 ? var.security_group_ids : compact([try(aws_security_group.ecs[0].id, null)])
+  vpc_id                            = coalesce(var.vpc_id, try(aws_vpc.main[0].id, null))
+  public_subnet_ids                 = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : [for subnet in aws_subnet.public : subnet.id]
+  private_subnet_ids                = length(var.private_subnet_ids) > 0 ? var.private_subnet_ids : [for subnet in aws_subnet.private : subnet.id]
+  runtime_subnet_ids                = length(var.subnet_ids) > 0 ? var.subnet_ids : (var.assign_public_ip ? local.public_subnet_ids : local.private_subnet_ids)
+  runtime_security_group_ids        = length(var.security_group_ids) > 0 ? var.security_group_ids : compact([try(aws_security_group.ecs[0].id, null)])
   runtime_primary_security_group_id = length(var.security_group_ids) > 0 ? var.security_group_ids[0] : try(aws_security_group.ecs[0].id, null)
-  resolved_database_url_secret_arn = coalesce(var.database_url_secret_arn, try(aws_secretsmanager_secret.database_url[0].arn, null))
-  use_live_comunio_secret        = var.comunio_snapshot_file == null && var.comunio_credentials_secret_arn != null
+  resolved_database_url_secret_arn  = coalesce(var.database_url_secret_arn, try(aws_secretsmanager_secret.database_url[0].arn, null))
+  use_live_comunio_secret           = var.comunio_snapshot_file == null && var.comunio_credentials_secret_arn != null
   task_environment = concat(
     [
       {
@@ -167,10 +167,10 @@ resource "aws_ecs_task_definition" "ingest" {
 
   container_definitions = jsonencode([
     {
-      name      = "ingest-runner"
-      image     = "${aws_ecr_repository.backend.repository_url}:${var.image_tag}"
-      essential = true
-      command   = ["python", "-m", "src.ingest.runner", "--run-type", "manual", "--mode", "snapshot"]
+      name        = "ingest-runner"
+      image       = "${aws_ecr_repository.backend.repository_url}:${var.image_tag}"
+      essential   = true
+        command     = ["python", "-m", "src.ingest.runner", "--run-type", "scheduled", "--mode", "snapshot"]
       environment = local.task_environment
       secrets = [
         {
@@ -232,6 +232,27 @@ resource "aws_iam_role_policy" "events_run_task" {
   policy = data.aws_iam_policy_document.events_run_task.json
 }
 
+resource "aws_sqs_queue" "scheduler_dlq" {
+  name                      = "${local.name_prefix}-scheduler-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+
+  tags = local.common_tags
+}
+
+data "aws_iam_policy_document" "events_dlq" {
+  statement {
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.scheduler_dlq.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "events_dlq" {
+  name   = "${local.name_prefix}-events-dlq"
+  role   = aws_iam_role.events.id
+  policy = data.aws_iam_policy_document.events_dlq.json
+}
+
 resource "aws_cloudwatch_event_rule" "schedule" {
   name                = "${local.name_prefix}-snapshot-schedule"
   description         = "Triggers the Comunio backend ingest snapshot task"
@@ -247,11 +268,20 @@ resource "aws_cloudwatch_event_target" "ecs" {
   arn       = aws_ecs_cluster.backend.arn
   role_arn  = aws_iam_role.events.arn
 
+  retry_policy {
+    maximum_event_age_in_seconds = 3600
+    maximum_retry_attempts       = 2
+  }
+
+  dead_letter_config {
+    arn = aws_sqs_queue.scheduler_dlq.arn
+  }
+
   ecs_target {
     launch_type         = "FARGATE"
     task_count          = 1
     task_definition_arn = aws_ecs_task_definition.ingest.arn
-    platform_version    = "LATEST"
+    platform_version    = var.ecs_platform_version
 
     network_configuration {
       subnets          = local.runtime_subnet_ids

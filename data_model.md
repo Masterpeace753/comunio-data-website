@@ -58,7 +58,7 @@ Metadaten zu jedem Ingest-Lauf.
 | Feld | Typ | Constraint | Beschreibung |
 |------|-----|------------|--------------|
 | id | BIGSERIAL | PK | Lauf-ID |
-| run_type | TEXT | NOT NULL | manual oder scheduled |
+| run_type | TEXT | NOT NULL | manual oder scheduled (EventBridge) |
 | status | TEXT | NOT NULL | started, success, failed |
 | started_at | TIMESTAMPTZ | NOT NULL | Startzeitpunkt |
 | finished_at | TIMESTAMPTZ | NULL | Endzeitpunkt |
@@ -68,6 +68,11 @@ Metadaten zu jedem Ingest-Lauf.
 | correlation_id | TEXT | NULL | Korrelation fuer Run/Logs/Audit |
 | gate_status | TEXT | NULL | Status der Security-Gates S1-S4 |
 | remediation_step | TEXT | NULL | Zuordnung zum Remediation-Schritt |
+
+AP-9-Regeln fuer `ingest_runs`:
+- Ein EventBridge-Lauf wird mit `run_type=scheduled` gekennzeichnet; manuelle Recovery-Laeufe bleiben `manual`.
+- Jeder Lauf wird unabhaengig protokolliert. Wiederholungen duerfen den fachlichen Snapshot nicht duplizieren, weil die bestehenden UNIQUE-Constraints auf den Snapshot-Tabellen unveraendert gelten.
+- Scheduler- und DLQ-Metadaten werden in EventBridge, ECS und CloudWatch auditiert und nicht als neue fachliche Tabellen modelliert.
 
 ### 3.4 market_values
 Zeitreihe der Marktwerte je Spieler.

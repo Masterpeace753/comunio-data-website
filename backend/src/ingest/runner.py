@@ -42,7 +42,7 @@ def _fetch_with_backoff(client: ComunioPyClient, attempts: int = 4) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="AP-5/AP-7 manual ingest runner")
-    parser.add_argument("--run-type", default="manual", choices=["manual"], help="Only manual is in scope")
+    parser.add_argument("--run-type", default="manual", choices=["manual", "scheduled"], help="manual or EventBridge scheduled run")
     parser.add_argument(
         "--mode",
         default="snapshot",
@@ -51,8 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    _ = args.run_type
-    _log("run_started", run_type="manual", mode=args.mode)
+    _log("run_started", run_type=args.run_type, mode=args.mode)
 
     settings = load_settings()
     client = ComunioPyClient(settings)
@@ -81,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         conn = connect(settings.database_url)
         try:
-            run_id, records_written = run_manual_snapshot(conn, normalized_snapshot)
+            run_id, records_written = run_manual_snapshot(conn, normalized_snapshot, run_type=args.run_type)
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM ingest_runs")
                 ingest_runs_count = int(cur.fetchone()[0])

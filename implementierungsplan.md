@@ -104,7 +104,7 @@ Ziele:
 - Taeglicher Abruf und API als Zugriffsschicht
 
 Arbeitspakete:
-- AP-9 Scheduler fuer taegliche Runs mit AWS Tools
+- AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert und aktiviert; Stabilitaetsnachweis ueber drei Zeitfenster ausstehend)
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung)
@@ -215,8 +215,8 @@ Naechste Schritte in verbindlicher Reihenfolge:
 1. AP-10a Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
 2. Terraform-State aus dem Repository entfernen beziehungsweise sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
 3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ist nachgewiesen; der Lauf endete mit `run_success` und 600 geschriebenen Datensaetzen.
-4. Nach bestandenem Security- und Live-Gate AP-9 als taeglichen EventBridge-Scheduler produktiv aktivieren und ueber mehrere Laeufe beobachten.
-5. Anschliessend AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
+4. AP-9 ist als EventBridge-Scheduler aktiv; drei aufeinanderfolgende Zeitfenster mit erfolgreichem `run_type=scheduled` und ohne Duplikate nachweisen.
+5. Danach AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
 
 ## 10. Technische Entscheidungen fuer Phase 3
 
@@ -285,6 +285,7 @@ Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
 - P1 teilweise: DB-TLS, Snapshot-Input-Haertung und produktive Secrets-Manager-Nutzung sind im Live-Lauf nachgewiesen; die Secrets-Manager-Pflicht muss noch als dauerhaftes Deploy-Gate abgesichert werden.
 - P2 offen: Fehlerlogs muessen vor der Ausgabe sanitiziert werden; Tests muessen Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten abdecken.
 - P3 geplant: RDS-Multi-AZ, laengere Backup-Retention, private Fargate-Netzwerkpfade und erweiterte State-Integritaetsalarme folgen nach den P1-Gates.
+- AP-9 umgesetzt: ECS-Task-Revision 3, EventBridge `ENABLED`, Cron `cron(0 6 * * ? *)` (06:00 UTC), zwei Retries, eine SQS-DLQ und Fargate `1.4.0` sind aktiv; der erste scheduled Smoke-Test schrieb 600 Datensaetze ohne Fehler.
 - Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
 
 ## 17. Konsolidierte Trade-offs und offene Entscheidungen

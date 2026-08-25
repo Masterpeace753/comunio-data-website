@@ -135,13 +135,20 @@ def _upsert_market_values(conn: PgConnection, market_values: list[dict], player_
     return written
 
 
-def run_manual_snapshot(conn: PgConnection, normalized_snapshot: dict[str, list[dict]]) -> tuple[int, int]:
-    """Execute AP-7 manual snapshot transaction flow.
+def run_manual_snapshot(
+    conn: PgConnection,
+    normalized_snapshot: dict[str, list[dict]],
+    run_type: str = "manual",
+) -> tuple[int, int]:
+    """Execute the AP-7/AP-9 snapshot transaction flow.
 
     Returns:
         (run_id, records_written)
     """
-    run_id = _insert_ingest_run(conn, run_type="manual")
+    if run_type not in {"manual", "scheduled"}:
+        raise ValueError(f"Unsupported ingest run type: {run_type}")
+
+    run_id = _insert_ingest_run(conn, run_type=run_type)
     conn.commit()
 
     try:

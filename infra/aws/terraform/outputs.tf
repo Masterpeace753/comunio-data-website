@@ -62,3 +62,8 @@ output "eventbridge_rule_name" {
   description = "EventBridge rule name for the scheduled ingest run"
   value       = aws_cloudwatch_event_rule.schedule.name
 }
+
+output "scheduler_dlq_url" {
+  description = "URL of the EventBridge scheduler dead-letter queue"
+  value       = aws_sqs_queue.scheduler_dlq.url
+}

@@ -84,7 +84,7 @@ variable "task_memory" {
 variable "schedule_expression" {
   description = "EventBridge schedule expression for the ingest task"
   type        = string
-  default     = "cron(0 2 * * ? *)"
+  default     = "cron(0 6 * * ? *)"
 }
 
 variable "enable_schedule" {
@@ -242,4 +242,10 @@ variable "tags" {
   description = "Additional tags"
   type        = map(string)
   default     = {}
+}
+
+variable "ecs_platform_version" {
+  description = "Pinned ECS Fargate platform version for scheduled runs"
+  type        = string
+  default     = "1.4.0"
 }

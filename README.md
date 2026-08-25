@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: 0.3.0 (AWS Infrastructure Baseline)
+Release-Version: v0.4.0 (Scheduled Ingest)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 

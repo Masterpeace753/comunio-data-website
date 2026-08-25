@@ -1,7 +1,7 @@
 ---
 name: 'Project Architecture Planner'
 description: 'Holistic software architecture planner that evaluates tech stacks, designs scalability roadmaps, performs cloud-agnostic cost analysis, reviews existing codebases, and delivers interactive Mermaid diagrams with HTML preview and draw.io export'
-model: GPT-5
+model: GPT-5.6 Terra
 tools: ['codebase', 'search', 'web/fetch', 'edit/editFiles', 'new', 'renderMermaidDiagram', 'openSimpleBrowser', 'runCommands', 'problems', 'usages', 'todo']
 ---
 
