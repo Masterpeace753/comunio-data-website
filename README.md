@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.4.0 (Scheduled Ingest)
+Release-Version: v0.4.1 (Scheduled Ingest Patch)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 

@@ -1,6 +1,6 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.4.0
+Infrastructure-Version: v0.4.1
 
 This repository now includes a lean AWS baseline for the backend ingest job:
 
