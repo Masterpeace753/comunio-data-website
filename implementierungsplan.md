@@ -253,34 +253,35 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 - CI/CD fuehrt Build, Tests und Deployments reproduzierbar aus.
 - Release nur mit gruenem Gate-Report (kein Override fuer Critical/High).
 
-## 12. Priorisiertes Rest-Backlog fuer die naechsten 2 Sprints
+## 12. Aktuelles Rest-Backlog und Reihenfolge
 
-### Sprint 3 (Security und Live-Betrieb)
-Ziel: Produktions-Gates schliessen und den Live-Ingest belastbar nachweisen.
+Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung und beschreibt den Stand nach dem Security-Review vom 2026-08-25.
 
-- Story 1: Secrets-Manager-Pflicht ohne ENV-Fallback erzwingen.
-- Story 2: DB-TLS, Logging-Sanitization und Snapshot-Input-Haertung als Laufzeit- und Test-Gates absichern.
-- Story 3: Terraform-State sicher verwalten und exponierte sensible Werte rotieren.
-- Story 4: Live-Kompatibilitaet des ComunioPy-Adapters sowie einen produktionsnahen Snapshot-Lauf validieren.
+### 12.1 P1: Production-Blocker
+- AP-10a.1: Rohe Exception-Details aus `backend/src/ingest/runner.py` entfernen und eine feste Fehlertaxonomie mit Sanitization-Tests einfuehren.
+- AP-10a.2: Terraform-State sicher verwalten, lokale State-/Variablendateien aus dem Deploymentprozess ausschliessen und betroffene Credentials rotieren, falls sie ausserhalb des geschuetzten Kontexts exponiert waren.
+- Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs; State und Credentials sind nicht Bestandteil von Git-Artefakten.
 
-### Sprint 4 (Automatisierung und API)
-Ziel: Taeglichen Ingest und die erste API-Zugriffsschicht bereitstellen.
+### 12.2 P2: Produktionshygiene
+- AP-10a.3: Produktions-Secret-Modus strukturell erzwingen; ENV-Credentials duerfen nur in explizitem Development-Modus verwendet werden.
+- AP-10a.4: Container-Images mit Commit-SHA oder Release-Tag statt `latest` deployen und Rollback ueber die immutable Referenz pruefen.
+- AP-9.1: Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachweisen.
 
-- Story 1: AP-9 EventBridge-Scheduler aktivieren, beobachten und mit mehreren erfolgreichen Laeufen nachweisen.
-- Story 2: AP-10 Idempotenz- und Retry-Regeln unter wiederholten beziehungsweise fehlerhaften Laeufen testen.
-- Story 3: AP-11 FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
-- Story 4: API-Tests und erste Performance-Baselines etablieren.
+### 12.3 P3: Härtung und Ausbau
+- AP-10a.5: Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben und `assign_public_ip=false` nach Netzwerk-Smoke-Test aktivieren.
+- AP-10b: CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
+- AP-10/AP-11: Idempotenz-/Retry-Nachweise vervollstaendigen und danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
 
-## 16. Security-Remediation-Sequenz (konsolidiert)
+## 13. Security-Remediation-Sequenz (konsolidiert)
 
-Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
+Diese Reihenfolge ist verbindlich vor dem regulaeren Produktionsbetrieb und dem weiteren Ausbau ab AP-10:
 1. Credentials-Policy: Produktion nur Secrets Manager, kein ENV-Fallback.
 2. DB-Transport-Policy: TLS `sslmode=require` oder staerker als Laufzeit-Gate.
 3. Logging-Sanitization: keine rohen Exceptions, strukturierte `error_code`-Logs.
 4. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
 5. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
 
-### 16.1 Review-Status (2026-08-25)
+### 13.1 Review-Status (2026-08-25)
 - P1 offen: `terraform.tfstate`, `terraform.tfstate.backup` und produktive Variablendateien muessen aus Git entfernt beziehungsweise aus der Historie bereinigt werden; danach sind betroffene Credentials zu rotieren.
 - P1 teilweise: DB-TLS, Snapshot-Input-Haertung und produktive Secrets-Manager-Nutzung sind im Live-Lauf nachgewiesen; die Secrets-Manager-Pflicht muss noch als dauerhaftes Deploy-Gate abgesichert werden.
 - P2 offen: Fehlerlogs muessen vor der Ausgabe sanitiziert werden; Tests muessen Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten abdecken.
@@ -288,7 +289,7 @@ Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
 - AP-9 umgesetzt: ECS-Task-Revision 3, EventBridge `ENABLED`, Cron `cron(0 6 * * ? *)` (06:00 UTC), zwei Retries, eine SQS-DLQ und Fargate `1.4.0` sind aktiv; der erste scheduled Smoke-Test schrieb 600 Datensaetze ohne Fehler.
 - Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
 
-### 16.2 Security-Review-Massnahmen (2026-08-25)
+### 13.2 Security-Review-Massnahmen (2026-08-25)
 Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-project-security-review.md`.
 
 #### P1: Vor Production-Freigabe
@@ -305,68 +306,67 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 - CI-Security-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
 - Abnahmekriterium: Keine offenen Critical/High Findings und reproduzierbarer Deploy-Block bei Gate-Verletzung.
 
-## 17. Konsolidierte Trade-offs und offene Entscheidungen
+## 14. Konsolidierte Trade-offs und offene Entscheidungen
 
-### 17.1 Trade-offs
+### 14.1 Trade-offs
 - Strikte Security-Gates verlangsamen kurzfristig Deployments, reduzieren aber Produktionsrisiko.
 - Erweiterte Logging- und Audit-Anforderungen erhoehen Betriebsaufwand, verbessern Incident-Reaktion.
 - Fruehe FinOps-Gates begrenzen Experimentierfreiheit, stabilisieren jedoch Kostenpfad.
 
-### 17.2 Offene Entscheidungen
+### 14.2 Offene Entscheidungen
 - Zielniveau fuer DB-TLS in Produktion (`require` Mindestniveau, `verify-full` Zielniveau) inkl. CA-Handling.
 - Exakter Umfang der geschuetzten Debug-Logs fuer tiefe Störungsanalyse.
 
-## 13. Phase-1 Umsetzungscheckliste (konsolidiert aus 5 Agent-Beitraegen)
+### 14.3 Kosten- und Betriebs-Trade-offs
+- Remote S3-State mit Locking verursacht geringe laufende Kosten, reduziert aber State-Konflikte und Credential-Exposure deutlich.
+- Automatische Secret-Rotation verbessert den Sicherheitsstatus, erfordert jedoch einen getesteten Rotationshandler und einen Reconnect-Nachweis.
+- Multi-AZ, laengere Backups und private Fargate-Netzwerkpfade werden erst nach dem MVP-Reliability-Gate aktiviert, um die fruehe Betriebsphase budgetschonend zu halten.
 
-### 13.1 AP-1 Lastenheft-Review und Scope-Fixierung
+## 15. Phase-1 Umsetzungscheckliste (konsolidiert aus 5 Agent-Beitraegen)
+
+### 15.1 AP-1 Lastenheft-Review und Scope-Fixierung
 - MUST/SHOULD/NICE-TO-HAVE schriftlich festlegen.
 - Nicht-Ziele fuer Phase 1 explizit dokumentieren.
 - Messbare NFR-Definitionen fuer Phase 1 festhalten.
 - Stakeholder-Signoff fuer Scope bis Ende Woche 1.
 
-### 13.2 AP-2 Architekturentscheidungen dokumentieren
+### 15.2 AP-2 Architekturentscheidungen dokumentieren
 - ADR-Set fuer Kernentscheidungen anlegen (Runtime, DB-Hosting, Secrets, CI/CD, Branching).
 - Sicherheits-Baseline fuer Secrets, IAM, Netzwerk und Verschluesselung festlegen.
 - Service-Mapping fuer AWS in der Architekturdoku konkretisieren.
 - Offene Architekturentscheidungen mit Verantwortlichen und Due Date markieren.
 
-### 13.3 AP-3 Datenmodell finalisieren
+### 15.3 AP-3 Datenmodell finalisieren
 - Kern-Tabellen und Beziehungen fuer Phase 1 final freigeben.
 - Idempotenz-Constraint und Index-Mindestset verbindlich machen.
 - Migrations-Strategie festlegen (Tool + Benennung + Rollback-Prinzip).
 - Data Dictionary fuer Kernfelder abschliessen.
 
-### 13.4 AP-4 Dev-Umgebung und Delivery-Basis
+### 15.4 AP-4 Dev-Umgebung und Delivery-Basis
 - Repo-Struktur fuer backend, ingest, frontend, infrastructure und docs festlegen.
 - Docker- und lokale Startkonventionen dokumentieren.
 - CI-Baseline mit Lint, Tests und Dependency-Checks aktivieren.
 - Branch-Schutz und PR-Regeln verbindlich konfigurieren.
 
-## 14. Phase-1 Abnahme (Ende Woche 2)
+## 16. Phase-1 Abnahme (Ende Woche 2)
 
-### 14.1 Muss-Kriterien
+### 16.1 Muss-Kriterien
 - Lastenheft-Scope ist schriftlich freigegeben.
 - Architekturentscheidungen sind als ADRs dokumentiert.
 - Datenmodell fuer Phase 1 ist final und widerspruchsfrei.
 - Dev-Setup ist reproduzierbar und vom Team erfolgreich durchlaufen.
 
-### 14.2 KPI-Kriterien
+### 16.2 KPI-Kriterien
 - Setup-Zeit fuer neue Entwickler ist dokumentiert.
 - Kritische Blocker aus Woche 1 sind geschlossen.
 - CI-Baseline laeuft fuer Pull Requests stabil.
 
-## 15. Phase-1 Trade-offs und offene Entscheidungen
+## 17. Phase-1 Trade-offs und offene Entscheidungen
 
-### 15.1 Trade-offs
+### 17.1 Trade-offs
 - Dokumentations- und Entscheidungsqualitaet wird vor Feature-Tempo priorisiert.
 - Kern-Setup wird abgeschlossen, spaetere Funktionsumsetzung wird bewusst nicht vorgezogen.
 
-### 15.2 Offene Entscheidungen
+### 17.2 Offene Entscheidungen
 - Finale Produktions-Runtime fuer Ingest.
 - Exakte Budgetgrenzen fuer Dev/Staging in der Fruehphase.
-
-### 17.3 Kosten- und Betriebs-Trade-offs
-- Remote S3-State mit Locking verursacht geringe laufende Kosten, reduziert aber State-Konflikte und Credential-Exposure deutlich.
-- Automatische Secret-Rotation verbessert den Sicherheitsstatus, erfordert jedoch einen getesteten Rotationshandler und einen Reconnect-Nachweis.
-- Multi-AZ, laengere Backups und private Fargate-Netzwerkpfade werden erst nach dem MVP-Reliability-Gate aktiviert, um die fruehe Betriebsphase budgetschonend zu halten.
-- Mindestumfang der Security-Controls vor Start von Phase 2.
