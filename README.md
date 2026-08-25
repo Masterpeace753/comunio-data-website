@@ -23,9 +23,9 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Die Backend-Tests bestehen.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. Die Backend-Tests bestehen.
 
-Noch offen sind die verbindlichen State-/Security-Gates sowie die Phase-3-Arbeiten fuer Scheduler und API.
+Noch offen sind die verbindlichen State-/Security-Gates, der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 und die Phase-3-Arbeiten fuer die API.
 
 ## Architektur und Planung
 
@@ -74,6 +74,7 @@ Hinweis fuer lokale, deterministische Tests:
 
 - AP-5/AP-6 Runbook: [backend/OPERABILITY-AP5-AP6.md](backend/OPERABILITY-AP5-AP6.md)
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
+- AP-9 Scheduler-Runbook: [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
 - AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
 
 Verbindliche Gates vor dem naechsten Ausbau:
@@ -101,6 +102,6 @@ Wichtiger Hinweis zu ComunioPy:
 1. Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
 2. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
 3. Den erfolgreichen Live-Nachweis in Monitoring und Runbook uebernehmen und die Secrets-Manager-Pflicht als Deploy-Gate absichern.
-4. Danach AP-9 EventBridge-Scheduler produktiv aktivieren und AP-11 FastAPI-Endpunkte umsetzen.
+4. Nach dem Drei-Lauf-Nachweis AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 FastAPI-Endpunkte umsetzen.
 
 Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).
