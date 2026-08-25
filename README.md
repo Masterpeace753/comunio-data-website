@@ -90,12 +90,12 @@ Einschaetzung Stand heute:
 - boto3: technisch aktuell einsetzbar
 - psycopg2-binary: technisch aktuell einsetzbar
 - python-dotenv: technisch aktuell einsetzbar
-- comuniopy: funktional kritisch pruefen
+- requests: wird vom eigenen Comunio-REST-Adapter verwendet
 
-Wichtiger Hinweis zu ComunioPy:
-- In der aktuellen Umgebung wurde ein Legacy-Modul (ComunioPy) erkannt, das auf Python 3 Import-Probleme verursachen kann.
-- Der AP-7 Snapshot-Run funktioniert lokal trotzdem im Fixture-Modus.
-- Fuer produktiven Live-Login ist als naechster Schritt die Bibliotheks-/Adapter-Kompatibilitaet verbindlich zu stabilisieren.
+Hinweis zum Comunio-Adapter:
+- Das externe Legacy-Paket `comuniopy` ist keine Projektabhaengigkeit und wird nicht importiert.
+- `backend/src/ingest/comuniopy_client.py` enthaelt stattdessen den eigenen `ComunioPyClient` fuer Login, Snapshot-Abruf und Normalisierung.
+- Der produktive AWS-Live-Snapshot wurde mit diesem Adapter erfolgreich ausgefuehrt.
 
 ## Naechste Schritte
 

@@ -1,14 +1,15 @@
-# Projektdokumentation: ComunioPy als Standardlösung
+# Projektdokumentation: Eigener Comunio-REST-Adapter
 
 ## Entscheidung
-Dieses Projekt verwendet **ausschließlich ComunioPy** als API‑Wrapper und Datenquelle
-für alle Comunio-bezogenen Funktionen.
+Dieses Projekt verwendet einen eigenen `ComunioPyClient` als API-Adapter und
+Comunio als Datenquelle für alle Comunio-bezogenen Funktionen. Das externe
+Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 
 ## Begründung
-- **Stabilität:** ComunioPy ist aktiver gepflegt und robuster.
+- **Stabilität:** Der Adapter kontrolliert Login, Timeouts, Pagination und Fehlerbehandlung selbst.
 - **Funktionsumfang:** Breitere Abdeckung (Teams, Spieler, Marktwerte, Transfermarkt).
-- **Wartbarkeit:** Sauberer strukturiert, besseres Fehlerhandling.
-- **Datenqualität:** Konsistentere IDs, weniger Parsing-Probleme.
+- **Wartbarkeit:** Die Schnittstelle ist im Projektcode sichtbar und testbar.
+- **Datenqualität:** Normalisierung und Positionsmapping werden zentral im Adapter umgesetzt.
 
 ## Abgedeckte Use Cases
 - Spieler pro Team inkl. Marktwert, Marktwert‑Deltas, Punkten.
@@ -35,7 +36,7 @@ für alle Comunio-bezogenen Funktionen.
 - Fehlende Werte → `NULL`
 
 ## Architektur (Kurzüberblick)
-- **Ingest:** Python + ComunioPy  
+- **Ingest:** Python + eigener ComunioPyClient
 - **DB:** PostgreSQL (optional TimescaleDB)  
 - **Backend:** FastAPI  
 - **Frontend:** React oder Dash  
