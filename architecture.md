@@ -113,6 +113,19 @@ flowchart LR
 - Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
 - Gate-Policy: Bei Verstoessen gegen S1-S4 ist ein Production-Deploy blockiert.
 
+### 5.2 Terraform-State und Secret-Lifecycle
+- Terraform-State darf nicht in Git oder auf unverschluesselten lokalen Arbeitsplaetzen liegen.
+- Das Produktions-Backend verwendet ein versioniertes, verschluesseltes S3-Backend mit aktivierter Public-Access-Sperre und State-Locking.
+- Der State-Zugriff erfolgt nur ueber einen dedizierten Deployment-Principal mit minimalen S3- und Locking-Rechten.
+- Bereits exponierte State-, Backup- und Variablendateien werden aus der Versionshistorie entfernt; betroffene RDS-, Datenbank-URL- und Comunio-Credentials werden vor dem naechsten Produktionslauf rotiert.
+- RDS- und Comunio-Secrets erhalten einen dokumentierten Rotationsprozess. Automatische Rotation wird erst aktiviert, wenn der Rotationshandler inklusive Reconnect-Test produktionsreif ist.
+- Secret-Werte, Secret-Versionen und Rotationsdetails werden nicht im fachlichen Datenmodell gespeichert. CloudTrail und Secrets Manager liefern den technischen Audit-Trail.
+
+### 5.3 Logging-Sanitization und Diagnose
+- Standardlogs enthalten nur `event`, `stage`, `run_id`, `correlation_id`, `error_code` und eine kurze, sanitizte Diagnose.
+- Rohe Exception-Texte, Connection Strings, Tokens, Secret-Namen, E-Mail-Adressen und lokale Pfade werden nicht geloggt.
+- Tiefere Diagnose erfolgt ueber geschuetzte AWS-Diagnosekanaele mit eingeschraenktem Zugriff und definierter Aufbewahrung.
+
 ## 6. Verfuegbarkeit und Skalierung
 
 - Ziel: 99.9 Prozent Uptime
@@ -153,9 +166,9 @@ flowchart LR
 
 ### 10.1 Verbindliche AWS-Bausteine
 - Secrets Management: AWS Secrets Manager mit Rotation alle 30 bis 90 Tage.
-- Datenbank-HA: RDS PostgreSQL Multi-AZ mit automatischem Failover.
-- Netzwerk: VPC mit Private Subnets fuer EKS und RDS, restriktive Security Groups.
-- Pod-Berechtigungen: IAM Roles for Service Accounts (IRSA) pro Service.
+- Datenbank-HA: RDS PostgreSQL Multi-AZ mit automatischem Failover als Zielprofil; MVP bleibt bis zum Reliability-Gate budgetschonend.
+- Netzwerk: VPC mit Private Subnets fuer RDS und restriktiven Security Groups; der aktuelle Ingest laeuft auf ECS Fargate.
+- Task-Berechtigungen: Dedizierte ECS Task Roles pro Service mit Least-Privilege statt gemeinsam genutzter Admin-Rechte.
 - Schutzschicht: AWS WAF vor API-Einstieg inklusive Rate Limiting.
 - Audit: CloudTrail und VPC Flow Logs aktivieren.
 

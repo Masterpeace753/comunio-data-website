@@ -197,6 +197,18 @@ Bei groesserer Datenmenge:
 - Security-Ereignisse verwenden sanitizte Fehlertaxonomie statt roher Exception-Nachrichten.
 - Security- und Incident-Logs mindestens 180 Tage online verfuegbar, danach archiviert.
 
+### 8.1 Grenze zwischen Fachdaten und Betriebsdaten
+- Secret-Werte, Passwoerter, Tokens und Secret-Versionen gehoeren nicht in PostgreSQL.
+- `ingest_runs.error_message` darf nur eine kurze, sanitizte Diagnose enthalten; der maschinenlesbare `error_code` ist fuer Auswertung und Alerting massgeblich.
+- Secret-Zugriffe, Rotationen und Terraform-State-Aenderungen werden ausserhalb des Fachdatenmodells ueber Secrets Manager, CloudTrail und den gesicherten Terraform-State auditiert.
+- Ein spaeterer technischer Security-Audit-Store ist nur bei nachgewiesenem Compliance-Bedarf zu ergaenzen und darf keine Secret-Werte persistieren.
+
+### 8.2 Datenmodell-Gates fuer Produktion
+- G1: Jeder produktive Ingest-Run besitzt eine `correlation_id` und einen abschliessenden Status.
+- G2: Fehlerlaeufe verwenden `error_code`; rohe Exception-Texte werden nicht persistiert.
+- G3: Snapshot-Input wird vor der Persistenz gegen Schema, Groesse und erlaubten Pfad geprueft.
+- G4: Die fachlichen Idempotenz-Constraints bleiben unveraendert; Security-Haertung darf keine Duplikate oder fachliche Historie erzeugen.
+
 ## 12. Konsolidierte Multi-Agent-Ergaenzungen
 
 ### 12.1 Priorisierte Massnahmen

@@ -23,9 +23,9 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen und ein manueller Snapshot im Fixture-Modus wurden End-to-End erfolgreich ausgefuehrt; die Backend-Tests bestehen.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Die Backend-Tests bestehen.
 
-Noch offen sind der produktive Live-Nachweis mit echten Comunio-Credentials, die verbindlichen Security-Gates sowie die Phase-3-Arbeiten fuer Scheduler und API.
+Noch offen sind die verbindlichen State-/Security-Gates sowie die Phase-3-Arbeiten fuer Scheduler und API.
 
 ## Architektur und Planung
 
@@ -100,7 +100,7 @@ Wichtiger Hinweis zu ComunioPy:
 
 1. Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
 2. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
-3. Live-Kompatibilitaet des ComunioPy-Clients und AP-7 mit echter DATABASE_URL sowie echten Credentials nachweisen.
+3. Den erfolgreichen Live-Nachweis in Monitoring und Runbook uebernehmen und die Secrets-Manager-Pflicht als Deploy-Gate absichern.
 4. Danach AP-9 EventBridge-Scheduler produktiv aktivieren und AP-11 FastAPI-Endpunkte umsetzen.
 
 Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).

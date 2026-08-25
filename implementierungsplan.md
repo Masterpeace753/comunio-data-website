@@ -209,18 +209,18 @@ Massnahme: Strikte Meilensteine, Scope-Management, priorisierte Must-have-Liste.
 Der aktuelle Stand liegt am Uebergang von Phase 2 zu Phase 3:
 - AP-5 bis AP-8 sind auf Code- und Dokumentationsebene umgesetzt.
 - AWS-Infrastruktur, Migrationen und ein manueller Snapshot im Fixture-Modus sind End-to-End validiert.
-- Backend-Tests bestehen; ein Live-Nachweis mit echten Comunio-Credentials steht noch aus.
+- Backend-Tests bestehen; ein produktiver Live-Snapshot mit Secrets Manager Credentials ist End-to-End validiert.
 
 Naechste Schritte in verbindlicher Reihenfolge:
 1. AP-10a Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
 2. Terraform-State aus dem Repository entfernen beziehungsweise sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
-3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ausfuehren und die geschriebenen Daten fachlich pruefen.
+3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ist nachgewiesen; der Lauf endete mit `run_success` und 600 geschriebenen Datensaetzen.
 4. Nach bestandenem Security- und Live-Gate AP-9 als taeglichen EventBridge-Scheduler produktiv aktivieren und ueber mehrere Laeufe beobachten.
 5. Anschliessend AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
 
-## 10. Technische Entscheidungen vor Start Phase 2
+## 10. Technische Entscheidungen fuer Phase 3
 
-Diese Entscheidungen sind als Blocker zuerst verbindlich zu treffen:
+Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu treffen oder zu bestaetigen:
 
 - Authentifizierung: JWT/OAuth2-Variante fuer API festlegen.
 - Scheduler: EventBridge in Produktion, lokale Variante fuer Entwicklung.
@@ -279,6 +279,13 @@ Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
 3. Logging-Sanitization: keine rohen Exceptions, strukturierte `error_code`-Logs.
 4. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
 5. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
+
+### 16.1 Review-Status (2026-08-25)
+- P1 offen: `terraform.tfstate`, `terraform.tfstate.backup` und produktive Variablendateien muessen aus Git entfernt beziehungsweise aus der Historie bereinigt werden; danach sind betroffene Credentials zu rotieren.
+- P1 teilweise: DB-TLS, Snapshot-Input-Haertung und produktive Secrets-Manager-Nutzung sind im Live-Lauf nachgewiesen; die Secrets-Manager-Pflicht muss noch als dauerhaftes Deploy-Gate abgesichert werden.
+- P2 offen: Fehlerlogs muessen vor der Ausgabe sanitiziert werden; Tests muessen Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten abdecken.
+- P3 geplant: RDS-Multi-AZ, laengere Backup-Retention, private Fargate-Netzwerkpfade und erweiterte State-Integritaetsalarme folgen nach den P1-Gates.
+- Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
 
 ## 17. Konsolidierte Trade-offs und offene Entscheidungen
 
@@ -339,4 +346,9 @@ Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
 ### 15.2 Offene Entscheidungen
 - Finale Produktions-Runtime fuer Ingest.
 - Exakte Budgetgrenzen fuer Dev/Staging in der Fruehphase.
+
+### 17.3 Kosten- und Betriebs-Trade-offs
+- Remote S3-State mit Locking verursacht geringe laufende Kosten, reduziert aber State-Konflikte und Credential-Exposure deutlich.
+- Automatische Secret-Rotation verbessert den Sicherheitsstatus, erfordert jedoch einen getesteten Rotationshandler und einen Reconnect-Nachweis.
+- Multi-AZ, laengere Backups und private Fargate-Netzwerkpfade werden erst nach dem MVP-Reliability-Gate aktiviert, um die fruehe Betriebsphase budgetschonend zu halten.
 - Mindestumfang der Security-Controls vor Start von Phase 2.
