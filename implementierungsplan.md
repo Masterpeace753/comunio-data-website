@@ -106,8 +106,8 @@ Ziele:
 Arbeitspakete:
 - AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert und aktiviert; Stabilitaetsnachweis ueber drei Zeitfenster ausstehend)
 - AP-10 Idempotenz-Regeln und Retry-Strategien
-- AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung)
-- AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung)
+- AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
+- AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung, Secret-Scan, Dependency-Scan und Terraform-Pruefungen)
 - AP-11 FastAPI-Endpunkte fuer Spieler, Teams, Historie, Transfermarkt
 - AP-12 Delta-Berechnungen in API
 - AP-13 API-Tests und Performance-Baselines
@@ -287,6 +287,23 @@ Diese Reihenfolge ist verbindlich vor weiterem Feature-Ausbau in AP-9+:
 - P3 geplant: RDS-Multi-AZ, laengere Backup-Retention, private Fargate-Netzwerkpfade und erweiterte State-Integritaetsalarme folgen nach den P1-Gates.
 - AP-9 umgesetzt: ECS-Task-Revision 3, EventBridge `ENABLED`, Cron `cron(0 6 * * ? *)` (06:00 UTC), zwei Retries, eine SQS-DLQ und Fargate `1.4.0` sind aktiv; der erste scheduled Smoke-Test schrieb 600 Datensaetze ohne Fehler.
 - Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
+
+### 16.2 Security-Review-Massnahmen (2026-08-25)
+Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-project-security-review.md`.
+
+#### P1: Vor Production-Freigabe
+- Logging-Sanitization in `backend/src/ingest/runner.py`: `detail=str(exc)` entfernen, feste Fehlertaxonomie verwenden und Tests fuer Tokens, Connection Strings, ARNs, Pfade und personenbezogene Daten ergaenzen.
+- Abnahmekriterium: Standardlogs enthalten keine rohen Exception-Texte oder sensiblen Werte; Security-Review H1 ist geschlossen.
+
+#### P2: Vor dem regulaeren Produktionsbetrieb
+- Produktionskonfiguration strukturell gegen ENV-Credentials absichern; `COMUNIO_SECRET_NAME` und `COMUNIO_REQUIRE_SECRET_MODE=true` muessen als nicht umgehbares Gate gelten.
+- Container-Images mit Commit-SHA oder Release-Tag statt `latest` deployen und die ECR-Tag-Strategie auf unveraenderliche Referenzen umstellen.
+- Abnahmekriterium: ECS-Task-Definition enthaelt keine Credential-ENV-Werte und referenziert eine nachvollziehbare immutable Image-Version.
+
+#### P3: Geplante Härtung
+- Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben; `assign_public_ip=false` erst nach validiertem NAT-/VPC-Endpoint-Pfad aktivieren.
+- CI-Security-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
+- Abnahmekriterium: Keine offenen Critical/High Findings und reproduzierbarer Deploy-Block bei Gate-Verletzung.
 
 ## 17. Konsolidierte Trade-offs und offene Entscheidungen
 

@@ -27,6 +27,8 @@ Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot m
 
 Noch offen sind die verbindlichen State-/Security-Gates, der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 und die Phase-3-Arbeiten fuer die API.
 
+Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der aktuelle Production-Readiness-Status ist **No-Go**, bis insbesondere die Logging-Sanitization, die unveraenderliche Image-Referenz und die nicht umgehbare Produktions-Secret-Policy umgesetzt sind.
+
 ## Architektur und Planung
 
 - Zielarchitektur: [architecture.md](architecture.md)
@@ -76,6 +78,7 @@ Hinweis fuer lokale, deterministische Tests:
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
 - AP-9 Scheduler-Runbook: [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
 - AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
+- Security-Review: [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
 
 Verbindliche Gates vor dem naechsten Ausbau:
 - G1 Login-Bootstrap
@@ -99,9 +102,9 @@ Hinweis zum Comunio-Adapter:
 
 ## Naechste Schritte
 
-1. Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
-2. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
-3. Den erfolgreichen Live-Nachweis in Monitoring und Runbook uebernehmen und die Secrets-Manager-Pflicht als Deploy-Gate absichern.
+1. Blockierendes Security-Finding H1 schliessen: rohe Exception-Details aus Logs entfernen und Sanitization-Tests ergaenzen.
+2. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie ausserhalb des geschuetzten AWS-/CI-Kontexts exponiert waren.
+3. Produktions-Secret-Policy strukturell erzwingen und auf immutable Container-Image-Referenzen umstellen.
 4. Nach dem Drei-Lauf-Nachweis AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 FastAPI-Endpunkte umsetzen.
 
 Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).
