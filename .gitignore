@@ -53,6 +53,7 @@ yarn-error.log*
 docker-compose.override.yml
 
 # Database and local data dumps
+exports/
 *.sql
 *.dump
 *.sqlite
