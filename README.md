@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.4.1 (Scheduled Ingest Patch)
+Release-Version: v0.4.2 (Login-Retry Patch)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 
@@ -23,7 +23,7 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. Die Backend-Tests bestehen.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die Backend-Tests bestehen.
 
 Noch offen sind die verbindlichen State-/Security-Gates, der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 und die Phase-3-Arbeiten fuer die API.
 
@@ -76,7 +76,7 @@ Hinweis fuer lokale, deterministische Tests:
 
 - AP-5/AP-6 Runbook: [backend/OPERABILITY-AP5-AP6.md](backend/OPERABILITY-AP5-AP6.md)
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
-- AP-9 Scheduler-Runbook: [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
+- AP-9/AP-9.2 Scheduler-Runbook (inkl. Login-Retry und Alarm): [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
 - AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
 - Security-Review: [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
 

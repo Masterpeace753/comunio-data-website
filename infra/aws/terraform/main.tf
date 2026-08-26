@@ -48,6 +48,14 @@ locals {
       {
         name  = "COMUNIO_REQUIRE_SECRET_MODE"
         value = local.use_live_comunio_secret ? "true" : "false"
+      },
+      {
+        name  = "COMUNIO_LOGIN_RETRY_ATTEMPTS"
+        value = tostring(var.login_retry_attempts)
+      },
+      {
+        name  = "COMUNIO_LOGIN_RETRY_WAIT_SECONDS"
+        value = tostring(var.login_retry_wait_seconds)
       }
     ],
     var.comunio_snapshot_file != null ? [
@@ -170,7 +178,7 @@ resource "aws_ecs_task_definition" "ingest" {
       name        = "ingest-runner"
       image       = "${aws_ecr_repository.backend.repository_url}:${var.image_tag}"
       essential   = true
-        command     = ["python", "-m", "src.ingest.runner", "--run-type", "scheduled", "--mode", "snapshot"]
+      command     = ["python", "-m", "src.ingest.runner", "--run-type", "scheduled", "--mode", "snapshot"]
       environment = local.task_environment
       secrets = [
         {
@@ -289,4 +297,37 @@ resource "aws_cloudwatch_event_target" "ecs" {
       assign_public_ip = var.assign_public_ip
     }
   }
+}
+
+# AP-9.2: automated check whether a scheduled run finished successfully or
+# was aborted after exhausting login retries, so operators are notified
+# without needing to poll ECS/CloudWatch manually.
+resource "aws_cloudwatch_log_metric_filter" "login_exhausted" {
+  name           = "${local.name_prefix}-login-retries-exhausted"
+  log_group_name = aws_cloudwatch_log_group.backend.name
+  pattern        = "\"event=run_failed\" \"stage=login\""
+
+  metric_transformation {
+    name      = "LoginRetriesExhausted"
+    namespace = "Comunio/Ingest"
+    value     = "1"
+    unit      = "Count"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "login_exhausted" {
+  alarm_name          = "${local.name_prefix}-login-retries-exhausted"
+  alarm_description   = "Scheduled ingest run failed after exhausting all login retries"
+  namespace           = aws_cloudwatch_log_metric_filter.login_exhausted.metric_transformation[0].namespace
+  metric_name         = aws_cloudwatch_log_metric_filter.login_exhausted.metric_transformation[0].name
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = compact([var.alert_sns_topic_arn])
+  ok_actions          = compact([var.alert_sns_topic_arn])
+
+  tags = local.common_tags
 }

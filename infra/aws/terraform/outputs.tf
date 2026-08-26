@@ -67,3 +67,8 @@ output "scheduler_dlq_url" {
   description = "URL of the EventBridge scheduler dead-letter queue"
   value       = aws_sqs_queue.scheduler_dlq.url
 }
+
+output "login_retries_exhausted_alarm_name" {
+  description = "CloudWatch alarm name that fires when a scheduled run exhausts all login retries"
+  value       = aws_cloudwatch_metric_alarm.login_exhausted.alarm_name
+}

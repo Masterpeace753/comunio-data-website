@@ -40,6 +40,42 @@ def _fetch_with_backoff(client: ComunioPyClient, attempts: int = 4) -> dict:
     raise ComunioSnapshotError(f"Snapshot fetch failed after {attempts} attempts: {last_error}")
 
 
+def _login_with_retry(
+    client: ComunioPyClient,
+    max_attempts: int,
+    wait_seconds: int,
+    sleep_fn=time.sleep,
+) -> None:
+    """AP-9.2: detect login failures and retry the whole run every `wait_seconds`.
+
+    After `max_attempts` failed logins the caller ends the run the same way a
+    successful run ends (process exit); ECS stops the one-off Fargate task
+    identically in both cases, so no extra shutdown step is required here.
+    """
+    last_error: ComunioLoginError | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client.login()
+            if attempt > 1:
+                _log("login_recovered", attempt=attempt, max_attempts=max_attempts)
+            return
+        except ComunioLoginError as exc:
+            last_error = exc
+            _log(
+                "login_attempt_failed",
+                attempt=attempt,
+                max_attempts=max_attempts,
+                error_code=_error_code(exc),
+            )
+            if attempt >= max_attempts:
+                break
+            _log("login_retry_scheduled", attempt=attempt + 1, max_attempts=max_attempts, wait_seconds=wait_seconds)
+            sleep_fn(wait_seconds)
+
+    raise ComunioLoginError(f"Login failed after {max_attempts} attempts: {last_error}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="AP-5/AP-7 manual ingest runner")
     parser.add_argument("--run-type", default="manual", choices=["manual", "scheduled"], help="manual or EventBridge scheduled run")
@@ -57,9 +93,15 @@ def main(argv: list[str] | None = None) -> int:
     client = ComunioPyClient(settings)
 
     try:
-        client.login()
+        _login_with_retry(client, settings.login_retry_attempts, settings.login_retry_wait_seconds)
     except ComunioLoginError as exc:
-        _log("run_failed", stage="login", error_code=_error_code(exc), detail=str(exc))
+        _log(
+            "run_failed",
+            stage="login",
+            error_code=_error_code(exc),
+            attempts=settings.login_retry_attempts,
+            detail=str(exc),
+        )
         return 1
 
     if args.mode == "login":

@@ -10,6 +10,10 @@ assign_public_ip             = true
 # comunio_snapshot_file      = "/app/tests/sample_snapshot.json"   # fixture mode (no live login)
 comunio_credentials_secret_arn = "arn:aws:secretsmanager:<region>:<account>:secret:/comunio/phase2/comuniopy-credentials-XXXXXX"
 db_backup_retention_days     = 1
+# AP-9.2 login retry/alerting: defaults are 3 attempts, 300s (5 min) apart.
+# login_retry_attempts        = 3
+# login_retry_wait_seconds    = 300
+# alert_sns_topic_arn         = "arn:aws:sns:<region>:<account>:comunio-ingest-alerts"
 tags = {
   Owner      = "team-comunio"
   CostCenter = "sports-data"

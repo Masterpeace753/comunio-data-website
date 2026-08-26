@@ -105,6 +105,7 @@ Ziele:
 
 Arbeitspakete:
 - AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert und aktiviert; Stabilitaetsnachweis ueber drei Zeitfenster ausstehend)
+- AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt): 3 Login-Versuche im 5-Minuten-Abstand, CloudWatch-Alarm bei erschoepften Retries
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung, Secret-Scan, Dependency-Scan und Terraform-Pruefungen)
@@ -370,3 +371,31 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 ### 17.2 Offene Entscheidungen
 - Finale Produktions-Runtime fuer Ingest.
 - Exakte Budgetgrenzen fuer Dev/Staging in der Fruehphase.
+
+## 18. AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt)
+
+### 18.1 Ziel
+Der Scheduler-Lauf soll selbststaendig erkennen, ob er erfolgreich war oder an einem Login-Problem gescheitert ist. Bei Login-Fehlern wird der Lauf automatisch erneut versucht, statt sofort als fehlgeschlagen zu enden.
+
+### 18.2 Umsetzung
+- `backend/src/ingest/runner.py`: neue Funktion `_login_with_retry` fuehrt bis zu `COMUNIO_LOGIN_RETRY_ATTEMPTS` (Default 3) Login-Versuche im Abstand von `COMUNIO_LOGIN_RETRY_WAIT_SECONDS` (Default 300 Sekunden, 5 Minuten) durch.
+- `backend/src/config.py`: neue Settings-Felder `login_retry_attempts` und `login_retry_wait_seconds` mit Validierung (positive Ganzzahlen).
+- Nach erschoepften Versuchen wird der Lauf mit `run_failed`, `stage=login` beendet; der Prozess terminiert mit Exit-Code 1, genau wie ein erfolgreicher Lauf mit Exit-Code 0 den Prozess regulaer beendet. Da der Ingest-Task ein einmaliger ECS-Fargate-Task ist (kein Dauerservice), stoppt ECS den Container in beiden Faellen identisch; es ist kein zusaetzlicher Shutdown-Mechanismus noetig.
+- `infra/aws/terraform/main.tf`: neue Terraform-Variablen `login_retry_attempts` und `login_retry_wait_seconds` werden als Container-ENV durchgereicht. Ein neuer CloudWatch Logs Metric Filter (`login-retries-exhausted`) auf das Muster `event=run_failed stage=login` speist einen CloudWatch Alarm; optionale Benachrichtigung ueber `alert_sns_topic_arn`.
+
+### 18.3 Tests
+- `backend/tests/test_scheduled_runner.py` deckt ab:
+  - Erfolgreicher Login nach transienten Fehlern (`login_recovered`).
+  - Alle Versuche fehlgeschlagen (`login_attempt_failed` dreimal, korrekte Wartezeiten).
+  - End-to-End: `runner.main()` liefert Exit-Code 1 und loggt `run_failed stage=login` nach erschoepften Retries.
+- `terraform validate` und `terraform fmt -check` sind fuer die Infrastrukturaenderung gruen.
+
+### 18.4 Priorisierung
+- P1: Login-Retry-Logik im Runner (dieser Abschnitt, umgesetzt).
+- P2: CloudWatch-Alarm auf erschoepfte Login-Retries (umgesetzt, Benachrichtigung optional).
+- P3: Verbindliche SNS-Anbindung fuer den Alarm, sobald das Betriebsteam einen Ziel-Topic bestaetigt.
+
+### 18.5 Trade-offs
+- Ein Lauf mit drei fehlgeschlagenen Login-Versuchen kann bis zu 10 Minuten laenger laufen (zwei Wartezeiten je 5 Minuten). Dies wird akzeptiert, da Login-Probleme typischerweise transient sind und die Snapshot-Verarbeitung ohnehin erst nach erfolgreichem Login beginnt.
+- Bewusst keine Step-Functions-Orchestrierung: Die intra-Prozess-Loesung vermeidet zusaetzliche AWS-Ressourcen und laufende Kosten und passt sich in den bestehenden Retry-Stil (Snapshot-Backoff) ein.
+

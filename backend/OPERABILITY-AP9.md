@@ -30,6 +30,21 @@ aws logs tail /ecs/comunio-prod-ingest --since 24h --region eu-central-1
 
 Expected application events include `run_started`, `db_verify`, and `run_success` with a non-zero `records_written` value.
 
+## Login retry and automated success/failure check (AP-9.2)
+
+- On each run the container attempts login up to `COMUNIO_LOGIN_RETRY_ATTEMPTS` times (default 3), waiting `COMUNIO_LOGIN_RETRY_WAIT_SECONDS` seconds (default 300, i.e. 5 minutes) between attempts.
+- Log events to look for:
+  - `login_attempt_failed attempt=<n> max_attempts=<n>` on each failed attempt.
+  - `login_retry_scheduled attempt=<n+1> wait_seconds=300` before each retry.
+  - `login_recovered attempt=<n>` if a later attempt succeeds.
+  - `run_failed stage=login attempts=<n>` if all attempts fail; the task still exits normally afterwards.
+- Because the ingest task is a one-off ECS Fargate task (not an ECS service), ECS stops the container the same way after a successful run (exit code 0) and after exhausted login retries (exit code 1). No extra shutdown step is required or configured.
+- A CloudWatch Logs metric filter (`comunio-prod-login-retries-exhausted`) turns `run_failed stage=login` log lines into a metric, backing the CloudWatch alarm `comunio-prod-login-retries-exhausted`. Configure `alert_sns_topic_arn` in Terraform to route this alarm to an SNS topic; without it, the alarm stays visible in CloudWatch only.
+
+```powershell
+aws cloudwatch describe-alarms --alarm-names comunio-prod-login-retries-exhausted --region eu-central-1
+```
+
 ## Retry and DLQ behavior
 
 - EventBridge retries a failed target invocation up to two times.
@@ -47,15 +62,16 @@ aws sqs get-queue-attributes --queue-url $dlqUrl --attribute-names ApproximateNu
 ## Failure response
 
 1. Check the ECS task exit code and the sanitized `error_code` in CloudWatch.
-2. Check database availability, Secrets Manager access, image availability, and network reachability.
-3. Do not paste SecretString values, credentials, connection strings, or raw exception text into incident records.
-4. Re-run the task manually only after the root cause is understood:
+2. If the failure is `stage=login`, confirm whether the login retries (3 attempts, 5 minutes apart) already ran; the CloudWatch alarm `comunio-prod-login-retries-exhausted` fires only after all attempts are exhausted.
+3. Check database availability, Secrets Manager access, image availability, and network reachability.
+4. Do not paste SecretString values, credentials, connection strings, or raw exception text into incident records.
+5. Re-run the task manually only after the root cause is understood:
 
 ```powershell
 ./scripts/aws/run-snapshot.ps1 -AssignPublicIp
 ```
 
-5. Keep the schedule disabled while a systemic failure is being repaired. Re-enable it through Terraform after validation.
+6. Keep the schedule disabled while a systemic failure is being repaired. Re-enable it through Terraform after validation.
 
 ## Rollback
 

@@ -1,6 +1,6 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.4.1
+Infrastructure-Version: v0.4.2
 
 This repository now includes a lean AWS baseline for the backend ingest job:
 
@@ -9,6 +9,8 @@ This repository now includes a lean AWS baseline for the backend ingest job:
 - ECS Fargate scheduled task for the manual snapshot runner
 - CloudWatch log group for task output
 - EventBridge schedule trigger
+- Login-retry safeguard (AP-9.2): the container retries a failed Comunio login up to `login_retry_attempts` times (default 3), 5 minutes apart (`login_retry_wait_seconds`, default 300s), before ending the run
+- CloudWatch Logs metric filter and alarm (`login-retries-exhausted`) that fires when all login retries are exhausted; optionally notifies `alert_sns_topic_arn`
 - Optional managed VPC with public and private subnets
 - Optional managed PostgreSQL on RDS with generated `DATABASE_URL` secret
 

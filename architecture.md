@@ -54,6 +54,17 @@ flowchart LR
 - Fachliche Idempotenz bleibt ueber die bestehenden Snapshot-Constraints erhalten; ein erneuter Lauf darf keine doppelten Marktwertzeilen erzeugen.
 - Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis.
 
+### 3.1.2 AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check
+- Ziel: der Ingest-Task erkennt selbststaendig, ob ein Lauf erfolgreich war oder an einem Login-Problem gescheitert ist, und behandelt Login-Fehler robust, bevor der Lauf endgueltig als fehlgeschlagen gilt.
+- Ablauf im Container (`backend/src/ingest/runner.py`, Funktion `_login_with_retry`):
+  1. Login-Versuch 1. Bei Erfolg laeuft der Snapshot-Flow wie bisher weiter.
+  2. Bei `ComunioLoginError` wartet der Prozess 5 Minuten (`COMUNIO_LOGIN_RETRY_WAIT_SECONDS`, Default 300s) und versucht den Login erneut.
+  3. Nach insgesamt 3 Versuchen (`COMUNIO_LOGIN_RETRY_ATTEMPTS`, Default 3) ohne Erfolg wird der Lauf mit `run_failed`, `stage=login` beendet.
+- Kein zusaetzlicher Shutdown-Schritt noetig: Der ECS-Fargate-Task ist ein einmaliger, nicht dauerhaft laufender Task (kein ECS Service). Der Container stoppt beim Prozessende automatisch identisch, egal ob der Lauf mit Exit-Code 0 (Erfolg) oder Exit-Code 1 (Login-Retries erschoepft) endet.
+- Automatischer AWS-Check: Ein CloudWatch Logs Metric Filter (`login-retries-exhausted`) auf das Muster `event=run_failed stage=login` speist einen CloudWatch Alarm. Der Alarm kann optional ueber `alert_sns_topic_arn` benachrichtigen; ohne Konfiguration bleibt er sichtbar in CloudWatch, ohne zusaetzliche Kosten fuer Benachrichtigungsinfrastruktur zu erzeugen.
+- Konfigurierbarkeit: `login_retry_attempts` und `login_retry_wait_seconds` sind Terraform-Variablen, die als Container-ENV `COMUNIO_LOGIN_RETRY_ATTEMPTS`/`COMUNIO_LOGIN_RETRY_WAIT_SECONDS` durchgereicht werden.
+- Abgrenzung zu EventBridge-Retries: Der EventBridge-Retry (`maximum_retry_attempts=2`) greift nur, wenn der `RunTask`-API-Aufruf selbst fehlschlaegt (z. B. Kapazitaets- oder IAM-Fehler). Login-Retries sind ein separates, anwendungsinternes Verhalten innerhalb eines einzelnen Tasks.
+
 ### 3.2 Backend API Service (FastAPI)
 - Verantwortung:
   - REST-Endpunkte fuer Frontend und spaetere Integrationen
@@ -195,6 +206,7 @@ Ergaenzende Security- und Cost-Gates:
 
 ### 10.3 Resilienzparameter
 - Ingest-Retry: Exponential Backoff 2s, 4s, 8s, 16s (maximal 4 Versuche).
+- Login-Retry (AP-9.2): fixes Intervall von 5 Minuten, maximal 3 Versuche pro Lauf; danach `run_failed` und regulaeres Prozessende.
 - Circuit Breaker: Open State nach 5 aufeinanderfolgenden Fehlern fuer 60 Sekunden.
 - Degraded Mode: API liefert im Stoerfall letzte valide Cache-Antwort mit Kennzeichnung.
 - Alerting-Schwellen:
@@ -281,4 +293,27 @@ Ergaenzende Security- und Cost-Gates:
   - Trade-off Tempo vs Sicherheit: Fruehere harte Gates verlangsamen einzelne Deploys, reduzieren aber signifikant Produktions- und Compliance-Risiko.
   - Trade-off Debug-Tiefe vs Datenschutz: Sanitizte Standardlogs enthalten weniger Rohdetails; tiefe Diagnose bleibt nur in geschuetzten Kanaelen.
   - Aufgeloester Widerspruch: Kostenminimum und hohe Verfuegbarkeit werden phasengerecht kombiniert (MVP budgetschonend, HA-Ausbau erst nach Gate-Triggern).
+
+  ## 15. AP-9.2 Login-Retry-Feature: konsolidierte Multi-Agent-Entscheidungen
+
+  Grundlage sind fuenf parallele Einzelbeitraege (AWS Cloud Expert, AWS Principal Architect, Principal Software Engineer, Project Architecture Planner, Software Engineer Agent) zum Feature "automatischer Login-Erfolgs-/Fehler-Check mit Retry".
+
+  ### 15.1 Priorisierte Massnahmen
+  - P1: Login-Retry im Ingest-Prozess selbst (3 Versuche, 5 Minuten Abstand), da dies ohne neue AWS-Ressourcen auskommt und den bestehenden Retry-Stil (Snapshot-Backoff) konsistent fortsetzt.
+  - P1: Strukturierte Log-Events (`login_attempt_failed`, `login_retry_scheduled`, `login_recovered`, `run_failed stage=login`) als Grundlage fuer den automatischen AWS-Check.
+  - P2: CloudWatch Logs Metric Filter und Alarm auf `run_failed stage=login`, damit erschoepfte Login-Retries ohne manuelles Log-Waelzen sichtbar werden.
+  - P3: Optionale SNS-Benachrichtigung ueber `alert_sns_topic_arn`; ohne Konfiguration bleibt der Alarm kostenneutral sichtbar in CloudWatch.
+
+  ### 15.2 Bewertete Alternativen und Trade-offs
+  - Alternative "Step Functions State Machine mit Wait/Retry zwischen mehreren Task-Starts" wurde verworfen: hoehere Betriebskomplexitaet und zusaetzliche laufende Kosten fuer ein Szenario, das intra-Prozess ohne neue Infrastruktur loesbar ist.
+  - Alternative "EventBridge-Retry-Zaehler erhoehen" wurde verworfen: EventBridge-Retries gelten nur fuer fehlgeschlagene `RunTask`-API-Aufrufe, nicht fuer anwendungsseitige Login-Fehler; eine Erhoehung haette das eigentliche Problem nicht adressiert.
+  - Trade-off Laufzeit vs Nutzerfreundlichkeit: Ein Lauf mit drei Login-Fehlversuchen kann bis zu 10 Minuten zusaetzliche Laufzeit benoetigen (2 Wartezeiten je 5 Minuten). Dies wird akzeptiert, weil Login-Probleme typischerweise transient sind (z. B. kurzzeitige API-Instabilitaet) und die Snapshot-Verarbeitung erst nach erfolgreichem Login beginnt.
+  - Kein Widerspruch zum bestehenden Snapshot-Retry (2s/4s/8s): Login-Retry und Snapshot-Retry adressieren unterschiedliche Fehlerklassen und bleiben bewusst getrennt konfigurierbar.
+
+  ### 15.3 Container-Lifecycle-Klarstellung
+  - Der Ingest-Task ist ein einmaliger ECS-Fargate-Task (kein ECS Service). ECS stoppt den Container beim Prozessende immer identisch, unabhaengig vom Exit-Code.
+  - Das Feature benoetigt daher keinen expliziten "Shutdown-Befehl": Exit-Code 0 (Erfolg) und Exit-Code 1 (Login-Retries erschoepft) fuehren beide zum selben ECS-Task-Stop-Verhalten.
+
+  ### 15.4 Offene Entscheidung
+  - Ob `alert_sns_topic_arn` bereits fuer den MVP-Betrieb verbindlich gesetzt werden muss oder das reine CloudWatch-Alarm-Signal fuer die aktuelle Betriebsphase ausreicht, ist mit dem Betriebsteam vor dem naechsten Produktions-Review zu bestaetigen.
 

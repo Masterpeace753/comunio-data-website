@@ -23,6 +23,8 @@ class Settings:
     comunio_snapshot_file: str | None
     comunio_snapshot_base_dir: str
     comunio_snapshot_max_bytes: int
+    login_retry_attempts: int
+    login_retry_wait_seconds: int
 
     @property
     def is_production(self) -> bool:
@@ -45,6 +47,22 @@ def load_settings() -> Settings:
     if snapshot_max_bytes <= 0:
         raise ValueError("COMUNIO_SNAPSHOT_MAX_BYTES must be > 0")
 
+    login_retry_attempts_raw = os.getenv("COMUNIO_LOGIN_RETRY_ATTEMPTS", "3")
+    try:
+        login_retry_attempts = int(login_retry_attempts_raw)
+    except ValueError as exc:
+        raise ValueError("COMUNIO_LOGIN_RETRY_ATTEMPTS must be an integer") from exc
+    if login_retry_attempts <= 0:
+        raise ValueError("COMUNIO_LOGIN_RETRY_ATTEMPTS must be > 0")
+
+    login_retry_wait_seconds_raw = os.getenv("COMUNIO_LOGIN_RETRY_WAIT_SECONDS", "300")
+    try:
+        login_retry_wait_seconds = int(login_retry_wait_seconds_raw)
+    except ValueError as exc:
+        raise ValueError("COMUNIO_LOGIN_RETRY_WAIT_SECONDS must be an integer") from exc
+    if login_retry_wait_seconds < 0:
+        raise ValueError("COMUNIO_LOGIN_RETRY_WAIT_SECONDS must be >= 0")
+
     return Settings(
         database_url=os.getenv("DATABASE_URL", ""),
         app_env=app_env,
@@ -59,4 +77,6 @@ def load_settings() -> Settings:
         comunio_snapshot_file=os.getenv("COMUNIO_SNAPSHOT_FILE"),
         comunio_snapshot_base_dir=snapshot_base_dir,
         comunio_snapshot_max_bytes=snapshot_max_bytes,
+        login_retry_attempts=login_retry_attempts,
+        login_retry_wait_seconds=login_retry_wait_seconds,
     )

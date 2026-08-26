@@ -249,3 +249,22 @@ variable "ecs_platform_version" {
   type        = string
   default     = "1.4.0"
 }
+
+variable "alert_sns_topic_arn" {
+  description = "Optional existing SNS topic ARN for ingest failure alarms (e.g. login retries exhausted). No notification is sent if null."
+  type        = string
+  default     = null
+}
+
+variable "login_retry_attempts" {
+  description = "Number of login attempts before a scheduled ingest run is marked failed"
+  type        = number
+  default     = 3
+}
+
+variable "login_retry_wait_seconds" {
+  description = "Wait time in seconds between login retry attempts"
+  type        = number
+  default     = 300
+}
+
