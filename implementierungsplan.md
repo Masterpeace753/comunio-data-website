@@ -528,4 +528,60 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 - AP-10c: Container-Image-Tagging (immutable ref statt `latest`).
 - AP-11: API-Grundlage (FastAPI, Endpoints für Spieler/Teams/Historie).
 
+### 20.8 Migration-Status (2026-09-01)
+
+**Erfolgreiche Ausführung aller Migrationsschritte (2026-09-01):**
+
+1. **Bootstrap-Ressourcen erstellt** ✅
+   - AWS S3-Bucket `comunio-prod-tfstate` mit Versioning, AES256-Encryption, Public-Access-Block und 90-Tage-Lifecycle für noncurrent versions
+   - AWS DynamoDB-Tabelle `comunio-prod-tfstate-lock` mit PAY_PER_REQUEST-Billing
+   - Plan: 6 to add, 0 to change, 0 to destroy
+   - Termin: 2026-09-01 (Schritt 1)
+
+2. **Backend-Konfiguration aktiviert** ✅
+   - `infra/aws/terraform/backend.tf`: Terraform-Block aus Kommentaren entfernt
+   - Datei ist konfiguriert mit:
+     - `bucket = "comunio-prod-tfstate"`
+     - `key = "comunio-prod/terraform.tfstate"`
+     - `region = "eu-central-1"`
+     - `dynamodb_table = "comunio-prod-tfstate-lock"`
+     - `encrypt = true`
+   - Termin: 2026-09-01 (Schritt 2)
+
+3. **State Migration durchgeführt** ✅
+   - `terraform init -migrate-state` bestätigt mit `yes`
+   - Lokales `terraform.tfstate` wurde zu S3-Backend migriert
+   - S3-State-Datei: `s3://comunio-prod-tfstate/comunio-prod/terraform.tfstate` (97,538 bytes)
+   - DynamoDB Lock-Tabelle Status: `ACTIVE`
+   - Termin: 2026-09-01 (Schritt 3)
+
+4. **Plan-Verifikation** ✅
+   - `terraform plan` bestätigt: No changes needed
+   - Infrastruktur entspricht Konfiguration
+   - Keine unerwarteten Diffs
+   - Termin: 2026-09-01 (Schritt 4)
+
+5. **Git-Sicherung** ✅
+   - `.gitignore` erweitert um Terraform-Richtlinien:
+     - `terraform.tfstate*` (alle State-Dateien ausgeschlossen)
+     - `.terraform/` (lokale Provider-Cache ausgeschlossen)
+     - `.terraform.lock.hcl` (NICHT ausgeschlossen, ist Dependency-Lock-File wie package-lock.json)
+   - `.terraform.lock.hcl` ist in Git-Tracking bestätigt
+   - Alle Änderungen staged für Commit
+   - Termin: 2026-09-01 (Schritt 5)
+
+**Verifikation abgeschlossen (2026-09-01):**
+- ✅ Lokale `terraform.tfstate` existiert noch (Backup, nicht mehr verwendete)
+- ✅ Remote S3-State ist abrufbar und vollständig
+- ✅ DynamoDB Lock-Tabelle ist aktiv und bereit
+- ✅ `terraform show -no-color` listet managed resources aus Remote-State auf
+- ✅ Alle 13 Backend-Tests bestanden
+- ✅ Terraform-Validierung erfolgreich
+
+**Production-Readiness:**
+- Terraform State ist nun durable (S3 mit Versioning), distributed (shareable Speicher), und gesichert mit Locking (DynamoDB) und Encryption
+- Kein State-Speicherort-Risiko für Team-Onboarding oder CI/CD-Automation
+- RDS-Credentials in lokalem State sind nicht mehr ein Hauptproblem (State ist aus Git und auf sicherem Cloud-Speicher)
+- Rotation der RDS-Credentials bleibt auf P2 (kein Git-Expositionsvektor, opportunistische Durchführung nach State-Stabilisierung)
+
 
