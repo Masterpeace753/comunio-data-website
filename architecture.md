@@ -52,7 +52,7 @@ flowchart LR
 - Die aktive Rule `comunio-prod-snapshot-schedule` verwendet die freigegebene Cron-Konfiguration und startet genau einen Fargate-Task pro Ausfuehrung.
 - Der Task nutzt eine gepinnte Fargate-Plattformversion und schreibt `run_started`, `db_verify` sowie `run_success` oder `run_failed` in CloudWatch.
 - Fachliche Idempotenz bleibt ueber die bestehenden Snapshot-Constraints erhalten; ein erneuter Lauf darf keine doppelten Marktwertzeilen erzeugen.
-- Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis.
+- Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis. Dieser Nachweis wurde am 2026-08-31 erbracht: fuenf aufeinanderfolgende Tagesfenster (2026-08-27 bis 2026-08-31) mit `run_type=scheduled`, `run_success` und ohne Duplikate in `market_values` (siehe `implementierungsplan.md`, Abschnitt 19).
 
 ### 3.1.2 AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check
 - Ziel: der Ingest-Task erkennt selbststaendig, ob ein Lauf erfolgreich war oder an einem Login-Problem gescheitert ist, und behandelt Login-Fehler robust, bevor der Lauf endgueltig als fehlgeschlagen gilt.
@@ -128,7 +128,7 @@ flowchart LR
 ### 5.1 Production Security Gates (verbindlich)
 - Gate S1 Credentials: In `prod` und `production` sind nur AWS Secrets Manager Credentials zulaessig. ENV-Fallback ist in Produktion verboten.
 - Gate S2 DB Transport: Datenbankverbindungen muessen TLS mit `sslmode=require` oder staerker erzwingen, Zielprofil `verify-full`.
-- Gate S3 Logging: Lauf- und Fehlerlogs muessen strukturiert sein (`event`, `stage`, `run_id`, `error_code`) und duerfen keine rohen Exception-Details enthalten.
+- Gate S3 Logging: Lauf- und Fehlerlogs muessen strukturiert sein (`event`, `stage`, `run_id`, `error_code`) und duerfen keine rohen Exception-Details enthalten. **Umgesetzt (AP-10a):** `backend/src/ingest/runner.py` ersetzt `detail=str(exc)` durch eine feste, geschlossene Taxonomie (`_safe_detail`) mit den Werten `authentication_failed`, `snapshot_fetch_failed`, `database_persistence_failed`, `unexpected_error`; Regressionstests in `backend/tests/test_scheduled_runner.py` stellen sicher, dass DSNs, Bearer-Tokens, ARNs, Dateipfade und E-Mail-Adressen nie im Log erscheinen.
 - Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
 - Gate-Policy: Bei Verstoessen gegen S1-S4 ist ein Production-Deploy blockiert.
 
@@ -136,7 +136,9 @@ flowchart LR
 - Terraform-State darf nicht in Git oder auf unverschluesselten lokalen Arbeitsplaetzen liegen.
 - Das Produktions-Backend verwendet ein versioniertes, verschluesseltes S3-Backend mit aktivierter Public-Access-Sperre und State-Locking.
 - Der State-Zugriff erfolgt nur ueber einen dedizierten Deployment-Principal mit minimalen S3- und Locking-Rechten.
-- Bereits exponierte State-, Backup- und Variablendateien werden aus der Versionshistorie entfernt; betroffene RDS-, Datenbank-URL- und Comunio-Credentials werden vor dem naechsten Produktionslauf rotiert.
+- **Verifiziert (2026-08-31):** `git ls-files`/`git log` bestaetigen, dass `terraform.tfstate` und `terraform.tfstate.backup` nie in die Git-Historie aufgenommen wurden (nur `.terraform.lock.hcl` ist getrackt); `.gitignore` schliesst `*.tfstate*` und `*.tfvars` bereits seit Projektstart aus. Es besteht daher kein Git-/GitHub-Expositionsvektor.
+- **Umgesetzt (AP-10a, Schritt 2):** `infra/aws/terraform/state_backend.tf` legt ein versioniertes, AES256-verschluesseltes S3-Bucket (`<prefix>-tfstate`, Public-Access-Sperre, 90-Tage-Lifecycle fuer alte Versionen) sowie eine DynamoDB-Lock-Tabelle (`<prefix>-tfstate-lock`, On-Demand) als Bootstrap-Ressourcen an. `backend.tf` enthaelt das (bewusst auskommentierte) `backend "s3"`-Blockschema; die Aktivierung erfordert einen einmaligen manuellen Bootstrap-Apply plus `terraform init -migrate-state` gemaess Runbook in `infra/aws/README.md` und darf nicht automatisiert ohne Freigabe laufen, da sie den produktiven State-Speicherort aendert.
+- **Rotationsentscheidung (dokumentierte Ausnahme):** Da kein Git-Expositionsvektor besteht und der State nur lokal auf einem Einzelarbeitsplatz vorlag, wird die RDS-Master-Passwort-Rotation nicht sofort erzwungen. Rotation bleibt als P2-Massnahme (Runbook-Bereitschaft) dokumentiert und wird nachgeholt, sobald ein zweiter Mitwirkender oder ein konkreter Verdachtsfall auftritt.
 - RDS- und Comunio-Secrets erhalten einen dokumentierten Rotationsprozess. Automatische Rotation wird erst aktiviert, wenn der Rotationshandler inklusive Reconnect-Test produktionsreif ist.
 - Secret-Werte, Secret-Versionen und Rotationsdetails werden nicht im fachlichen Datenmodell gespeichert. CloudTrail und Secrets Manager liefern den technischen Audit-Trail.
 

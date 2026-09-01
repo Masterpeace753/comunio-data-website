@@ -25,7 +25,7 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 
 Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die Backend-Tests bestehen.
 
-Noch offen sind die verbindlichen State-/Security-Gates, der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 und die Phase-3-Arbeiten fuer die API.
+Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). Noch offen sind die verbindlichen State-/Security-Gates und die Phase-3-Arbeiten fuer die API.
 
 Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der aktuelle Production-Readiness-Status ist **No-Go**, bis insbesondere die Logging-Sanitization, die unveraenderliche Image-Referenz und die nicht umgehbare Produktions-Secret-Policy umgesetzt sind.
 

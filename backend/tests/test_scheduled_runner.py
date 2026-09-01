@@ -88,3 +88,44 @@ def test_run_failed_after_exhausted_login_retries(monkeypatch, capsys) -> None:
     assert "run_failed" in out
     assert "stage=login" in out
 
+
+def test_run_failed_login_sanitizes_sensitive_exception_text(monkeypatch, capsys) -> None:
+    sensitive = (
+        "postgresql://user:S3cr3t@host:5432/db "
+        "Authorization: Bearer eyJhbGciOi... "
+        "arn:aws:iam::123456789012:role/comunio-task-role "
+        "C:\\Users\\alice\\secrets.json alice@example.com"
+    )
+
+    class LeakyClient:
+        def __init__(self, settings: object) -> None:
+            self.settings = settings
+
+        def login(self) -> None:
+            raise ComunioLoginError(sensitive)
+
+    monkeypatch.setattr(
+        runner,
+        "load_settings",
+        lambda: FakeSettings(login_retry_attempts=1, login_retry_wait_seconds=0),
+    )
+    monkeypatch.setattr(runner, "ComunioPyClient", LeakyClient)
+
+    result = runner.main(["--run-type", "scheduled", "--mode", "login"])
+
+    assert result == 1
+    out = capsys.readouterr().out
+    assert sensitive not in out
+    assert "S3cr3t" not in out
+    assert "Bearer" not in out
+    assert "arn:aws" not in out
+    assert "alice@example.com" not in out
+    assert "detail=authentication_failed" in out
+
+
+def test_safe_detail_falls_back_for_unmapped_stage() -> None:
+    assert runner._safe_detail("config") == "unexpected_error"
+    assert runner._safe_detail("login") == "authentication_failed"
+    assert runner._safe_detail("snapshot") == "snapshot_fetch_failed"
+    assert runner._safe_detail("persistence") == "database_persistence_failed"
+

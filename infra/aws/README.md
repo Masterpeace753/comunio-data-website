@@ -55,6 +55,28 @@ JSON secret consumed by the current backend code:
 When `create_database=true`, Terraform creates the database URL secret automatically and you do not need to provide `database_url_secret_arn`.
 When `comunio_snapshot_file` is set, you do not need `comunio_credentials_secret_arn` for the first infrastructure validation.
 
+## Remote Terraform state (AP-10a)
+
+Local state (`terraform.tfstate`) is git-ignored but has no locking, durability, or shared access. `state_backend.tf` defines bootstrap resources (versioned/encrypted S3 bucket + DynamoDB lock table); `backend.tf` holds the commented-out `backend "s3"` block. This migration changes where the live production state lives, so it must be run deliberately, not as part of routine `terraform apply`:
+
+```powershell
+aws configure export-credentials --format powershell | Invoke-Expression
+terraform init
+terraform apply `
+  -target=aws_s3_bucket.tfstate `
+  -target=aws_s3_bucket_versioning.tfstate `
+  -target=aws_s3_bucket_server_side_encryption_configuration.tfstate `
+  -target=aws_s3_bucket_public_access_block.tfstate `
+  -target=aws_s3_bucket_lifecycle_configuration.tfstate `
+  -target=aws_dynamodb_table.tfstate_lock
+
+# then uncomment the backend "s3" block in backend.tf
+terraform init -migrate-state   # confirm "yes" to copy existing local state
+terraform plan                  # verify no unexpected diff
+```
+
+Rotation note: `git ls-files`/`git log` confirm `terraform.tfstate*` and `terraform.tfvars` were never committed, so there is no Git/GitHub exposure vector for the RDS master password stored in state. Rotation is therefore treated as a scheduled P2 hardening step (documented in `architecture.md` §5.2), not an immediate P1 gate.
+
 ## Build and push
 
 ```powershell

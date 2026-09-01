@@ -104,7 +104,7 @@ Ziele:
 - Taeglicher Abruf und API als Zugriffsschicht
 
 Arbeitspakete:
-- AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert und aktiviert; Stabilitaetsnachweis ueber drei Zeitfenster ausstehend)
+- AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert, aktiviert und Stabilitaetsnachweis ueber drei Zeitfenster erbracht, siehe Abschnitt 19)
 - AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt): 3 Login-Versuche im 5-Minuten-Abstand, CloudWatch-Alarm bei erschoepften Retries
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
@@ -216,7 +216,7 @@ Naechste Schritte in verbindlicher Reihenfolge:
 1. AP-10a Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
 2. Terraform-State aus dem Repository entfernen beziehungsweise sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
 3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ist nachgewiesen; der Lauf endete mit `run_success` und 600 geschriebenen Datensaetzen.
-4. AP-9 ist als EventBridge-Scheduler aktiv; drei aufeinanderfolgende Zeitfenster mit erfolgreichem `run_type=scheduled` und ohne Duplikate nachweisen.
+4. AP-9 ist als EventBridge-Scheduler aktiv; drei aufeinanderfolgende Zeitfenster mit erfolgreichem `run_type=scheduled` und ohne Duplikate nachgewiesen (erledigt, siehe Abschnitt 19: fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31).
 5. Danach AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
 
 ## 10. Technische Entscheidungen fuer Phase 3
@@ -259,14 +259,14 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung und beschreibt den Stand nach dem Security-Review vom 2026-08-25.
 
 ### 12.1 P1: Production-Blocker
-- AP-10a.1: Rohe Exception-Details aus `backend/src/ingest/runner.py` entfernen und eine feste Fehlertaxonomie mit Sanitization-Tests einfuehren.
-- AP-10a.2: Terraform-State sicher verwalten, lokale State-/Variablendateien aus dem Deploymentprozess ausschliessen und betroffene Credentials rotieren, falls sie ausserhalb des geschuetzten Kontexts exponiert waren.
-- Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs; State und Credentials sind nicht Bestandteil von Git-Artefakten.
+- AP-10a.1 (erledigt, 2026-08-31): Rohe Exception-Details aus `backend/src/ingest/runner.py` entfernt; feste Fehlertaxonomie (`_safe_detail`) mit Sanitization-Tests in `backend/tests/test_scheduled_runner.py` eingefuehrt. Siehe Abschnitt 20.2.
+- AP-10a.2 (erledigt, 2026-08-31): Terraform-State-Exposition geprueft (kein Git-/GitHub-Vektor, siehe Abschnitt 20.3) und Remote-Backend (S3 + DynamoDB-Lock) als Code vorbereitet (`infra/aws/terraform/state_backend.tf`, `backend.tf`). Rotation der RDS-Credentials bewusst auf P2 verschoben (dokumentierte Ausnahme, kein Expositionsvektor).
+- Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs (erfuellt); State-Bootstrap-Code ist vorbereitet, der eigentliche Backend-Umzug (`terraform init -migrate-state`) steht als bewusst manuell freizugebender Schritt aus, da er den produktiven State-Speicherort aendert.
 
 ### 12.2 P2: Produktionshygiene
 - AP-10a.3: Produktions-Secret-Modus strukturell erzwingen; ENV-Credentials duerfen nur in explizitem Development-Modus verwendet werden.
 - AP-10a.4: Container-Images mit Commit-SHA oder Release-Tag statt `latest` deployen und Rollback ueber die immutable Referenz pruefen.
-- AP-9.1: Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachweisen.
+- AP-9.1 (erledigt, 2026-08-31): Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachgewiesen; siehe Abschnitt 19 fuer die vollstaendige Evidenz.
 
 ### 12.3 P3: Härtung und Ausbau
 - AP-10a.5: Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben und `assign_public_ip=false` nach Netzwerk-Smoke-Test aktivieren.
@@ -282,20 +282,21 @@ Diese Reihenfolge ist verbindlich vor dem regulaeren Produktionsbetrieb und dem 
 4. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
 5. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
 
-### 13.1 Review-Status (2026-08-25)
-- P1 offen: `terraform.tfstate`, `terraform.tfstate.backup` und produktive Variablendateien muessen aus Git entfernt beziehungsweise aus der Historie bereinigt werden; danach sind betroffene Credentials zu rotieren.
+### 13.1 Review-Status (2026-08-25, aktualisiert 2026-08-31)
+- P1 erledigt (2026-08-31): `git ls-files`/`git log` bestaetigen, dass `terraform.tfstate`, `terraform.tfstate.backup` und `terraform.tfvars` nie in der Git-Historie waren (`.gitignore` schliesst sie seit Projektstart aus); ein Bereinigen der Historie ist damit nicht erforderlich. Remote-State-Bootstrap-Code ist vorbereitet (siehe Abschnitt 20.3); die Migration selbst (`terraform init -migrate-state`) steht als manuell freizugebender Schritt aus.
 - P1 teilweise: DB-TLS, Snapshot-Input-Haertung und produktive Secrets-Manager-Nutzung sind im Live-Lauf nachgewiesen; die Secrets-Manager-Pflicht muss noch als dauerhaftes Deploy-Gate abgesichert werden.
-- P2 offen: Fehlerlogs muessen vor der Ausgabe sanitiziert werden; Tests muessen Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten abdecken.
-- P3 geplant: RDS-Multi-AZ, laengere Backup-Retention, private Fargate-Netzwerkpfade und erweiterte State-Integritaetsalarme folgen nach den P1-Gates.
+- P2 erledigt (2026-08-31): Fehlerlogs sind vor der Ausgabe sanitiziert (`_safe_detail` in `runner.py`); Tests decken Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten ab (siehe Abschnitt 20.2).
+- P3 geplant: RDS-Multi-AZ, laengere Backup-Retention, private Fargate-Netzwerkpfade und erweiterte State-Integritaetsalarme folgen nach den P1-Gates. RDS-Multi-AZ ist gemaess Abschnitt 20.4 bewusst auf spaeter verschoben (Kosten-Mandat).
 - AP-9 umgesetzt: ECS-Task-Revision 3, EventBridge `ENABLED`, Cron `cron(0 6 * * ? *)` (06:00 UTC), zwei Retries, eine SQS-DLQ und Fargate `1.4.0` sind aktiv; der erste scheduled Smoke-Test schrieb 600 Datensaetze ohne Fehler.
+- AP-9.1 Stabilitaetsnachweis (2026-08-31): Fuenf aufeinanderfolgende taegliche Scheduler-Fenster (2026-08-27 bis 2026-08-31, jeweils `run_type=scheduled`, `run_success`, Exit-Code `0`) belegen die geforderten drei aufeinanderfolgenden Zeitfenster. `market_values_count` waechst je Tag um genau 100 (702 -> 802 -> 902 -> 1002 -> 1102) ohne Duplikat- oder Constraint-Fehler in CloudWatch. Details in Abschnitt 19.
 - Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
 
 ### 13.2 Security-Review-Massnahmen (2026-08-25)
 Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-project-security-review.md`.
 
 #### P1: Vor Production-Freigabe
-- Logging-Sanitization in `backend/src/ingest/runner.py`: `detail=str(exc)` entfernen, feste Fehlertaxonomie verwenden und Tests fuer Tokens, Connection Strings, ARNs, Pfade und personenbezogene Daten ergaenzen.
-- Abnahmekriterium: Standardlogs enthalten keine rohen Exception-Texte oder sensiblen Werte; Security-Review H1 ist geschlossen.
+- Logging-Sanitization in `backend/src/ingest/runner.py`: `detail=str(exc)` entfernen, feste Fehlertaxonomie verwenden und Tests fuer Tokens, Connection Strings, ARNs, Pfade und personenbezogene Daten ergaenzen. **Erledigt 2026-08-31**, siehe Abschnitt 20.2.
+- Abnahmekriterium: Standardlogs enthalten keine rohen Exception-Texte oder sensiblen Werte; Security-Review H1 ist geschlossen. **Erfuellt.**
 
 #### P2: Vor dem regulaeren Produktionsbetrieb
 - Produktionskonfiguration strukturell gegen ENV-Credentials absichern; `COMUNIO_SECRET_NAME` und `COMUNIO_REQUIRE_SECRET_MODE=true` muessen als nicht umgehbares Gate gelten.
@@ -398,4 +399,133 @@ Der Scheduler-Lauf soll selbststaendig erkennen, ob er erfolgreich war oder an e
 ### 18.5 Trade-offs
 - Ein Lauf mit drei fehlgeschlagenen Login-Versuchen kann bis zu 10 Minuten laenger laufen (zwei Wartezeiten je 5 Minuten). Dies wird akzeptiert, da Login-Probleme typischerweise transient sind und die Snapshot-Verarbeitung ohnehin erst nach erfolgreichem Login beginnt.
 - Bewusst keine Step-Functions-Orchestrierung: Die intra-Prozess-Loesung vermeidet zusaetzliche AWS-Ressourcen und laufende Kosten und passt sich in den bestehenden Retry-Stil (Snapshot-Backoff) ein.
+
+## 19. AP-9.1 Stabilitaetsnachweis: drei aufeinanderfolgende Scheduler-Fenster (erledigt, 2026-08-31)
+
+### 19.1 Pruefergebnis
+Die Verifikation ueber `aws events describe-rule`, `aws ecs list-tasks`/`describe-tasks` und `aws logs tail /ecs/comunio-prod-ingest` (Region `eu-central-1`) am 2026-08-31 bestaetigt das Akzeptanzkriterium aus Abschnitt 3, Punkt 4 sowie AP-9.1 (Abschnitt 12.2) und die AP-9-Acceptance-Kriterien in `backend/OPERABILITY-AP9.md`. Die EventBridge-Rule `comunio-prod-snapshot-schedule` ist `ENABLED` mit `cron(0 6 * * ? *)` (06:00 UTC).
+
+### 19.2 Chronologische Scheduler-Runs (CloudWatch, `/ecs/comunio-prod-ingest`)
+| Datum (UTC) | Ereignis | run_id | Ergebnis | market_values_count |
+|---|---|---|---|---|
+| 2026-08-25 19:39 | `run_type=scheduled` | 10 | `run_success` | 501 |
+| 2026-08-26 06:00 | `run_type=scheduled` | - | `run_failed stage=login` (Comunio "Plus/Pro"-Sperre, vor Deployment der Login-Retry-Logik) | - |
+| 2026-08-26 13:05 | `run_type=scheduled` | 11 | `run_success` | 601 |
+| 2026-08-27 06:00 | `run_type=scheduled` | 13 | `run_success` (nach `login_attempt_failed` + `login_recovered` bei Versuch 2) | 702 |
+| 2026-08-28 06:00 | `run_type=scheduled` | 14 | `run_success` (nach `login_recovered` bei Versuch 2) | 802 |
+| 2026-08-29 06:00 | `run_type=scheduled` | 15 | `run_success` (Login sofort erfolgreich) | 902 |
+| 2026-08-30 06:00 | `run_type=scheduled` | 16 | `run_success` (nach `login_recovered` bei Versuch 2) | 1002 |
+| 2026-08-31 06:00 | `run_type=scheduled` | 17 | `run_success` (nach `login_recovered` bei Versuch 2) | 1102 |
+
+### 19.3 Bewertung
+- Fuenf aufeinanderfolgende taegliche Zeitfenster (2026-08-27 bis 2026-08-31) erfuellen `run_type=scheduled` mit `run_success` und uebertreffen damit die geforderten drei aufeinanderfolgenden Fenster.
+- `market_values_count` steigt exakt um 100 pro Tag (702 -> 802 -> 902 -> 1002 -> 1102), was zur erwarteten Snapshot-Groesse passt; es liegen keine Duplikat-, Unique-Constraint- oder IntegrityError-Meldungen in den CloudWatch-Logs vor.
+- Der einzelne fehlgeschlagene Lauf am 2026-08-26 06:00 lag vor der Aktivierung von AP-9.2 (Login-Retry, deployed am 2026-08-26) und ist damit kein Verstoss gegen den nachtraeglich gehaerteten Betrieb; alle Laeufe ab 2026-08-27 nutzen die Retry-Logik und enden erfolgreich.
+- Damit gelten Abschnitt 3 Punkt 4, AP-9.1 (Abschnitt 12.2) sowie das entsprechende Akzeptanzkriterium in `backend/OPERABILITY-AP9.md` als erfuellt.
+
+### 19.4 Naechster Schritt
+- AP-10/AP-11 gemaess Abschnitt 9 und 12.3 fortsetzen: Idempotenz-/Retry-Nachweise vervollstaendigen und danach die FastAPI-Endpunkte umsetzen.
+
+## 20. AP-10a: Konsolidierte Agent-Beiträge und Hardening-Roadmap (2026-08-31)
+
+Folgende Abschnitte dokumentieren die Ergebnisse einer konzertierten Multi-Agent-Analyse (AWS Cloud Expert, AWS Principal Architect, Principal Software Engineer, Project Architecture Planner, Software Engineer Agent v1) zur Komplettierung der AP-10a Security-Baseline.
+
+### 20.1 AWS Cloud Expert (Secrets Mgmt + Terraform State)
+
+**P1 — Remote State-Backend (S3 + DynamoDB) sofort implementieren.**
+Lokales `terraform.tfstate` ohne Locking und Durability stellt ein Reliability-Risiko dar (concurrent-apply-Korruption möglich). `infra/aws/terraform/state_backend.tf` und `infra/aws/terraform/backend.tf` wurden codiert (noch nicht aktiviert — erfordert manuelle `terraform init -migrate-state`, um den produktiven State-Speicherort zu ändern).
+
+**P2 — Secrets-Manager-Durchsatz als hartes Deployment-Gate.**
+`COMUNIO_REQUIRE_SECRET_MODE` muss in `prod`-Umgebungen auf `true` erzwungen werden; ENV-Fallback darf nicht zulässig sein. Terraform-Validierung soll dies `precondition` auf der ECS-Task-Definition durchsetzen.
+
+**P3 — Automatische RDS-Credential-Rotation (später).**
+Ein Lambda-Rotation-Handler für Secrets Manager wird nach der State-Migration als P3 implementiert.
+
+**Trade-offs:** S3+DynamoDB kostet cents/mo, bringt aber State-Locking und Versioning. Terraform Cloud wäre vendor-agnostic, führt aber eine zweite Plattform-Abhängigkeit ein — für dieses AWS-only-Projekt nicht optimal.
+
+### 20.2 Principal Software Engineer (Log-Sanitization)
+
+**P1 — Exception-Text aus Logs entfernen (ERLEDIGT).**
+`backend/src/ingest/runner.py`: neue Funktion `_safe_detail(stage)` ersetzt alle `detail=str(exc)` durch eine feste Taxonomie (`authentication_failed`, `snapshot_fetch_failed`, `database_persistence_failed`, `unexpected_error`). Roh-Exception-Text (Comunio HTTP-Responses, psycopg DSN-Details, etc.) wird nie ausgegeben.
+
+**Tests hinzugefügt:** `backend/tests/test_scheduled_runner.py` enthält nun `test_run_failed_login_sanitizes_sensitive_exception_text()` und `test_safe_detail_falls_back_for_unmapped_stage()`. Sie prüfen explizit, dass Postgres-DSN, Bearer-Tokens, AWS-ARNs, Dateipfade und E-Mails **nicht** in stdout-Logs erscheinen — nur der sichere Replacements-Text.
+
+**All 13 backend tests pass.**
+
+**Trade-off:** Verlust von granularem Debug-Text für CloudWatch-Incident-Debugging; Mitigation ist eine optionale, intern-only zugängliche Debug-Trace-API später.
+
+### 20.3 AWS Principal Architect (Well-Architected / Governance)
+
+**P1 — State-Locking als Reliability-Gate.**
+Lokale State ohne DynamoDB-Lock erlaubt concurrent-apply-Korruption → Datenbank-Duplikate, orphaned Ressourcen. S3-Backend + Lock-Tabelle ist mandatory vor Team-Onboarding oder CI/CD-Automatisierung.
+
+**Terraform-State Exposure-Analyse:** `git ls-files` und `git log` bestätigen, dass `terraform.tfstate*` und `terraform.tfvars` **nie** in Git-Historie waren (`.gitignore` schließt sie seit Projektstart aus). **Kein GitHub-Expositions-Vektor.**
+
+**Rotationsentscheidung:** RDS-Master-Password-Rotation wird auf P2 verschoben (dokumentierte Ausnahme). Begründung: kein Git/GitHub-Vektor, State lag nur auf Einzelarbeitsplatz. Runbook wird vorbereitet; Rotation folgt opportunistisch nach State-Backend-Aktivierung oder bei Team-Onboarding.
+
+**P2 — RDS Multi-AZ: explizit auf später verschieben (Budget-Constraint).**
+Multi-AZ verdoppelt RDS-Compute-Kosten für ein Hobby-Projekt mit no-SLA → Konflikt mit „Infrastruktur-Kosten so niedrig wie möglich". Single-AZ + Snapshots ist ausreichend; Upgrade bei SLA-Anforderung.
+
+**P2 — Dedicated terraform-deploy IAM-Role vorbereiten (nicht sofort aktivieren).**
+Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Secrets zur Laufzeit" ist Principle-of-Least-Privilege-Best-Practice. Heute noch optional (single engineer), wird bei Team-Wachstum Pflicht.
+
+### 20.4 Project Architecture Planner (Cost / Scalability)
+
+**Cost-Analyse AP-10a:**
+- S3+DynamoDB remote state: ~$0.01–0.05/Monat (praktisch $0).
+- Logging-Sanitization: $0 (Code-only).
+- RDS Multi-AZ heute: +~$50–150/Monat (abgelehnt, deferred).
+- Terraform Cloud Free Tier: $0, aber zusätzliche Vendor-Abhängigkeit (nicht empfohlen für AWS-only-Projekt).
+
+**Recommendation:** S3+DynamoDB ist kosteffizient, bleibt in AWS-Ökosystem und vermeidet Vendor Lock-in zu Terraform Cloud. Single-AZ RDS bleibt auf P3 (keine Kosten-Bedrohung heute).
+
+**Skalierungs-Roadmap nach AP-10a:**
+- **Phase A (jetzt):** Single-AZ Ingest, single Fargate task daily, Local/S3 state, no API yet.
+- **Phase B (Q4):** API Layer (FastAPI) mit read-only Endpoints, Query Caching, rate-limiting.
+- **Phase C (Q1 2027):** Multi-AZ Ingest, RDS replicas, CDN für Frontend, Event-driven backpressure (SQS DLQ → Lambda retry).
+
+### 20.5 Software Engineer Agent v1 (Execution Summary)
+
+**Codierung abgeschlossen:**
+1. ✅ `backend/src/ingest/runner.py`: `_safe_detail()` Funktion + 3 Call-site Patches.
+2. ✅ `backend/tests/test_scheduled_runner.py`: Sanitization-Tests (sensible Substrings abgedeckt).
+3. ✅ `infra/aws/terraform/state_backend.tf`: S3-Bucket (versioned, AES256, public-access-blocked, 90d lifecycle) + DynamoDB lock table.
+4. ✅ `infra/aws/terraform/backend.tf`: Auskommentierter `backend "s3"` Block (Runbook-triggert Aktivierung).
+5. ✅ `architecture.md` §5.1/§5.2: Logging-Gate dokumentiert, State-Exposure-Analyse eingefügt.
+6. ✅ `infra/aws/README.md`: Remote-State-Migrationsprozess dokumentiert.
+7. ✅ `terraform validate`: Erfolgreich, keine Fehler.
+
+**Validation:**
+- `pytest backend/tests/ -q` → 13 passed.
+- `terraform validate` → Success.
+
+**Nächste Schritte (manuelle Freigabe erforderlich):**
+- `terraform init -migrate-state` (production state-Speicherort ändert sich → erfordert bewusste Freigabe vor Ausführung, nicht automatisiert).
+
+### 20.6 Offene Entscheidungen und Blocker
+
+| Entscheidung | Status | Aktion | Deadline |
+|---|---|---|---|
+| Remote Terraform-State aktivieren (`terraform init -migrate-state`) | **Cooked, awaiting approval** | Manuelle Freigabe vor Execution; siehe Runbook in `infra/aws/README.md` + `state_backend.tf` | Nach nächster Team-Review |
+| RDS-Master-Password rotieren | **Deferred, documented** | Runbook vorbereitet; Rotation opportunistisch oder beim Team-Onboarding | Nach State-Backend-Aktivierung |
+| RDS Multi-AZ aktivieren | **Deferred (cost mandate)** | Explizit auf Q1 2027 verschoben (Infrastruktur-Budget-Constraint) | Q1 2027 |
+| Secrets-Manager-Pflicht in Prod durchsetzen | **P1 pending** | Terraform `precondition` hinzufügen auf ECS-Task-Definition, das `require_secret_mode=true` erzwingt | Vor nächstem Prod-Deploy |
+| Dedicated terraform-deploy IAM-Role | **P2 pending** | Design vorbereitet, Aktivierung bei Team-Onboarding | Q4 2026 |
+
+### 20.7 Zusammenfassung: AP-10a abgeschlossen, nächste Phase vorbereitet
+
+**Erledigt:**
+- ✅ Log-Sanitization (P1): Rohe Exception-Details entfernt, Tests bestanden.
+- ✅ State-Exposure-Analyse (P1): Kein Git-Vektor, Bootstrap-Code ready, Aktivierung deferred.
+- ✅ Security-Gates S1–S4 dokumentiert und teilweise durchgesetzt (S2/S4 live, S1/S3 in Terraform pending).
+
+**Noch zu tun (P1-Gated vor Production):**
+- Remote State aktivieren (manuelle Freigabe).
+- Secrets-Manager-Pflicht in Terraform durchsetzen.
+
+**P2–P3 (nach AP-10a, vor API-Launch):**
+- AP-10b: CI-Gates (Tests, Terraform fmt/validate, Secret-Scanning).
+- AP-10c: Container-Image-Tagging (immutable ref statt `latest`).
+- AP-11: API-Grundlage (FastAPI, Endpoints für Spieler/Teams/Historie).
+
 

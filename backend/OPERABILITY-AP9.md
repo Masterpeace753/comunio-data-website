@@ -88,6 +88,6 @@ The existing manual snapshot command remains available for controlled recovery r
 - EventBridge rule is `ENABLED` with the approved schedule.
 - ECS target uses the pinned Fargate platform version and least-privilege EventBridge role.
 - A scheduled task completes with exit code `0` and `run_type=scheduled`.
-- Three consecutive scheduled runs complete successfully without duplicate market-value rows.
+- Three consecutive scheduled runs complete successfully without duplicate market-value rows. **Verified 2026-08-31**: five consecutive daily windows (2026-08-27 through 2026-08-31), each `event=run_started run_type=scheduled` followed by `event=run_success`; `market_values_count` grew by exactly 100 per run (702, 802, 902, 1002, 1102) with no duplicate/constraint errors in CloudWatch. See `implementierungsplan.md` section 19 for the full log excerpt.
 - Failed target invocations are retried and visible in the scheduler DLQ.
 - Runbook and CloudWatch evidence are available for the first production window.

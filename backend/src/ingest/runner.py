@@ -22,6 +22,20 @@ def _error_code(exc: Exception) -> str:
     return exc.__class__.__name__.lower()
 
 
+# AP-10a: fixed, closed taxonomy so `detail=` never leaks raw exception text
+# (HTTP response bodies, DSNs, tokens) into CloudWatch logs.
+_SAFE_DETAIL_BY_STAGE: dict[str, str] = {
+    "login": "authentication_failed",
+    "snapshot": "snapshot_fetch_failed",
+    "persistence": "database_persistence_failed",
+}
+_DEFAULT_SAFE_DETAIL = "unexpected_error"
+
+
+def _safe_detail(stage: str) -> str:
+    return _SAFE_DETAIL_BY_STAGE.get(stage, _DEFAULT_SAFE_DETAIL)
+
+
 def _fetch_with_backoff(client: ComunioPyClient, attempts: int = 4) -> dict:
     delays = [2, 4, 8]
     last_error: Exception | None = None
@@ -100,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             stage="login",
             error_code=_error_code(exc),
             attempts=settings.login_retry_attempts,
-            detail=str(exc),
+            detail=_safe_detail("login"),
         )
         return 1
 
@@ -116,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         raw_snapshot = _fetch_with_backoff(client)
         normalized_snapshot = client.normalize_snapshot(raw_snapshot)
     except ComunioSnapshotError as exc:
-        _log("run_failed", stage="snapshot", error_code=_error_code(exc), detail=str(exc))
+        _log("run_failed", stage="snapshot", error_code=_error_code(exc), detail=_safe_detail("snapshot"))
         return 1
 
     try:
@@ -138,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             conn.close()
     except Exception as exc:
-        _log("run_failed", stage="persistence", error_code=_error_code(exc), detail=str(exc))
+        _log("run_failed", stage="persistence", error_code=_error_code(exc), detail=_safe_detail("persistence"))
         return 1
 
     _log("run_success", stage="snapshot", run_id=run_id, records_written=records_written)

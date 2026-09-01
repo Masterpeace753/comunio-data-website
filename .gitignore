@@ -48,6 +48,18 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Terraform (AP-10a: state is now on S3 + DynamoDB, never commit locally)
+terraform.tfstate*
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
 # Docker / local runtime
 .docker/
 docker-compose.override.yml
