@@ -34,6 +34,14 @@ class Settings:
 def load_settings() -> Settings:
     app_env = os.getenv("APP_ENV", "dev")
     require_secret_default = app_env.strip().lower() in {"prod", "production"}
+    require_secret_mode = _parse_bool(
+        os.getenv("COMUNIO_REQUIRE_SECRET_MODE"),
+        default=require_secret_default,
+    )
+
+    if app_env.strip().lower() in {"prod", "production"} and not require_secret_mode:
+        raise ValueError("Production requires COMUNIO_REQUIRE_SECRET_MODE=true")
+
     snapshot_base_dir = os.getenv(
         "COMUNIO_SNAPSHOT_BASE_DIR",
         str((Path(__file__).resolve().parents[1] / "tests").resolve()),
@@ -66,10 +74,7 @@ def load_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL", ""),
         app_env=app_env,
-        require_secret_mode=_parse_bool(
-            os.getenv("COMUNIO_REQUIRE_SECRET_MODE"),
-            default=require_secret_default,
-        ),
+        require_secret_mode=require_secret_mode,
         aws_region=os.getenv("AWS_REGION"),
         comunio_secret_name=os.getenv("COMUNIO_SECRET_NAME"),
         comunio_email=os.getenv("COMUNIO_EMAIL"),

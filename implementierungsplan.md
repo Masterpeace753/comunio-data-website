@@ -261,17 +261,29 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 ### 12.1 P1: Production-Blocker
 - AP-10a.1 (erledigt, 2026-08-31): Rohe Exception-Details aus `backend/src/ingest/runner.py` entfernt; feste Fehlertaxonomie (`_safe_detail`) mit Sanitization-Tests in `backend/tests/test_scheduled_runner.py` eingefuehrt. Siehe Abschnitt 20.2.
 - AP-10a.2 (erledigt, 2026-08-31): Terraform-State-Exposition geprueft (kein Git-/GitHub-Vektor, siehe Abschnitt 20.3) und Remote-Backend (S3 + DynamoDB-Lock) als Code vorbereitet (`infra/aws/terraform/state_backend.tf`, `backend.tf`). Rotation der RDS-Credentials bewusst auf P2 verschoben (dokumentierte Ausnahme, kein Expositionsvektor).
+- AP-10a.3 (erledigt, 2026-09-12): `backend/src/config.py` erzwingt in `APP_ENV=prod|production` den Pflichtmodus `COMUNIO_REQUIRE_SECRET_MODE=true`; ein ENV-Fallback wirft jetzt sofort einen Fehler und verhindert damit das unkontrollierte Blue/Green-Deployment mit Secret-Exposition.
+- AP-10a.4 (erledigt, 2026-09-12): ECR-Repository ist auf `image_tag_mutability = "IMMUTABLE"` gesetzt, und das Terraform-Input `image_tag` akzeptiert keine `latest`-Referenzen mehr. Damit sind Rollbacks nur noch via signifikanter, nicht wechselnder Image-Referenzen moeglich.
+- AP-10a.5 (blockiert, 2026-09-12): Der private Networking-Smoke-Test war nicht erfolgreich. Der ECS-Task konnte im privaten VPC keine ECR-Authentifizierung aufloesen, weil der erforderliche NAT-/ECR-Endpoint-Pfad noch fehlt. Die Freigabe der privaten Config steht daher bis zum Nachweis eines funktionierenden Outbound-Pfads aus.
 - Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs (erfuellt); State-Bootstrap-Code ist vorbereitet, der eigentliche Backend-Umzug (`terraform init -migrate-state`) steht als bewusst manuell freizugebender Schritt aus, da er den produktiven State-Speicherort aendert.
 
 ### 12.2 P2: Produktionshygiene
-- AP-10a.3: Produktions-Secret-Modus strukturell erzwingen; ENV-Credentials duerfen nur in explizitem Development-Modus verwendet werden.
-- AP-10a.4: Container-Images mit Commit-SHA oder Release-Tag statt `latest` deployen und Rollback ueber die immutable Referenz pruefen.
+- AP-10a.5 Release-Gate (aktiv, 2026-09-12): In der folgenden Reihenfolge muss die private AWS-Freigabe erfolgen:
+  1. Funktionierender NAT-/ECR-Endpoint-Pfad im privaten VPC-Setup.
+  2. Erneuter ECS-Task-Run ohne Public IP (`assign_public_ip=false`) nach erfolgreichem Netzwerk-Smoke-Test.
+  3. DB-Verbindungsnachweis aus dem Task selbst.
+  4. Danach `assign_public_ip=false` als Standard-Release-Switch festschreiben.
+- AP-10b (erledigt, 2026-09-12): CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning und Dependency-Scanning sind in `.github/workflows/ci.yml` dokumentiert; die Pipeline blockiert Deployments bei Quality-Gate-Verletzung.
 - AP-9.1 (erledigt, 2026-08-31): Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachgewiesen; siehe Abschnitt 19 fuer die vollstaendige Evidenz.
 
 ### 12.3 P3: Härtung und Ausbau
-- AP-10a.5: Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben und `assign_public_ip=false` nach Netzwerk-Smoke-Test aktivieren.
-- AP-10b: CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
-- AP-10/AP-11: Idempotenz-/Retry-Nachweise vervollstaendigen und danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
+- AP-10a.6: Kartierte VPC-/Egress-Haertung mit NAT Gateway und ECR/Secrets Manager VPC Endpoints, danach abschliessende private Fargate-Freigabe.
+- AP-10 (in Arbeit, 2026-09-12): Idempotenz-/Retry-Nachweise und Release-Gate fuer private networking sind in Arbeit; der public-IP-Task ist verifiziert, aber die private Netzwerkfreigabe bleibt bis zu einem erfolgreichen Task-Run im privaten Pfad und einem DB-Reconnect-Nachweis blockiert.
+- AP-11: Danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
+
+### 12.4 Verifizierter Stand der Release-Gate-Sequenz (2026-09-12)
+- Schritt 1: Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist in AWS ausgerollt, via `terraform apply` synchronisiert (`Apply complete! Resources: 0 added, 0 changed, 0 destroyed`) und mit `Exit-Code 0` verifiziert.
+- Schritt 2: NAT-Optionen A (`enable_nat_gateway`) und B (`enable_nat_instance`) wurden als schaltbare Terraform-Variablen in `infra/aws/terraform/network.tf` implementiert, validiert und im AWS-State synchronisiert.
+- Schritt 3: Der Switch auf `assign_public_ip=false` (AP-10a.6 / Enterprise Private Egress) bleibt schaltbar vorbereitet und wird erst aktiviert, wenn ein NAT Gateway / eine NAT Instance für private Egress freigegeben wird.
 
 ## 13. Security-Remediation-Sequenz (konsolidiert)
 

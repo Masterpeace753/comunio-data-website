@@ -126,11 +126,12 @@ flowchart LR
   - Schutz vor Injection und Broken Access Control
 
 ### 5.1 Production Security Gates (verbindlich)
-- Gate S1 Credentials: In `prod` und `production` sind nur AWS Secrets Manager Credentials zulaessig. ENV-Fallback ist in Produktion verboten.
+- Gate S1 Credentials: In `prod` und `production` sind nur AWS Secrets Manager Credentials zulaessig. ENV-Fallback ist in Produktion verboten. **Umgesetzt (AP-10a):** `backend/src/config.py` validiert jetzt, dass `APP_ENV=prod|production` zwingend `COMUNIO_REQUIRE_SECRET_MODE=true` erfordert; ansonsten wird ein `ValueError` geworfen, bevor der Lauf gestartet wird.
 - Gate S2 DB Transport: Datenbankverbindungen muessen TLS mit `sslmode=require` oder staerker erzwingen, Zielprofil `verify-full`.
 - Gate S3 Logging: Lauf- und Fehlerlogs muessen strukturiert sein (`event`, `stage`, `run_id`, `error_code`) und duerfen keine rohen Exception-Details enthalten. **Umgesetzt (AP-10a):** `backend/src/ingest/runner.py` ersetzt `detail=str(exc)` durch eine feste, geschlossene Taxonomie (`_safe_detail`) mit den Werten `authentication_failed`, `snapshot_fetch_failed`, `database_persistence_failed`, `unexpected_error`; Regressionstests in `backend/tests/test_scheduled_runner.py` stellen sicher, dass DSNs, Bearer-Tokens, ARNs, Dateipfade und E-Mail-Adressen nie im Log erscheinen.
 - Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
-- Gate-Policy: Bei Verstoessen gegen S1-S4 ist ein Production-Deploy blockiert.
+- Gate S5 Image Integrity: ECS-Container-Images muessen immutable Referenzen verwenden; `latest` ist in Produktion verboten. **Umgesetzt (AP-10b/AP-10a):** `infra/aws/terraform/variables.tf` verwirft `latest`, und `infra/aws/terraform/main.tf` setzt `image_tag_mutability = "IMMUTABLE"`.
+- Gate-Policy: Bei Verstoessen gegen S1-S5 ist ein Production-Deploy blockiert.
 
 ### 5.2 Terraform-State und Secret-Lifecycle
 - Terraform-State darf nicht in Git oder auf unverschluesselten lokalen Arbeitsplaetzen liegen.
@@ -141,6 +142,17 @@ flowchart LR
 - **Rotationsentscheidung (dokumentierte Ausnahme):** Da kein Git-Expositionsvektor besteht und der State nur lokal auf einem Einzelarbeitsplatz vorlag, wird die RDS-Master-Passwort-Rotation nicht sofort erzwungen. Rotation bleibt als P2-Massnahme (Runbook-Bereitschaft) dokumentiert und wird nachgeholt, sobald ein zweiter Mitwirkender oder ein konkreter Verdachtsfall auftritt.
 - RDS- und Comunio-Secrets erhalten einen dokumentierten Rotationsprozess. Automatische Rotation wird erst aktiviert, wenn der Rotationshandler inklusive Reconnect-Test produktionsreif ist.
 - Secret-Werte, Secret-Versionen und Rotationsdetails werden nicht im fachlichen Datenmodell gespeichert. CloudTrail und Secrets Manager liefern den technischen Audit-Trail.
+
+### 5.2.1 Release-Gate fuer private Networking (2026-09-12)
+- **Status (2026-09-12):** Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist produktionsbereit in AWS ausgerollt, erfolgreich per `terraform apply` synchronisiert (`Apply complete!`) und mit `Exit-Code 0` verifiziert.
+- **Vorbereitete Optionen für Egress-Härtung (AP-10a.6):**
+  - Option A (`enable_nat_gateway = true`): AWS Managed NAT Gateway (~$33/Mo).
+  - Option B (`enable_nat_instance = true`): Low-Cost `t4g.nano` NAT Instance (~$3/Mo).
+  - Beide Optionen sind im Terraform-Code (`network.tf`, `variables.tf`) schaltbar implementiert und im AWS-State synchronisiert.
+- **Freigabebedingung für `assign_public_ip = false`:**
+  1. Freigabe und Umschaltung auf Option A oder Option B in `terraform.tfvars`.
+  2. `terraform apply` zur Bereitstellung der NAT-Route.
+  3. ECS-Task ohne Public IP starten (`assign_public_ip=false`) und mit `Exit-Code 0` verifizieren.
 
 ### 5.3 Logging-Sanitization und Diagnose
 - Standardlogs enthalten nur `event`, `stage`, `run_id`, `correlation_id`, `error_code` und eine kurze, sanitizte Diagnose.

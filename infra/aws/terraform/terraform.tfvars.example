@@ -5,7 +5,13 @@ create_network               = true
 create_database              = true
 image_tag                    = "latest"
 enable_schedule              = false
+
+# Networking Options (AP-10a.5 / AP-10a.6):
+# Option D (MVP default, $0/mo): assign_public_ip = true, enable_nat_* = false
 assign_public_ip             = true
+enable_nat_gateway           = false   # Option A: AWS Managed NAT Gateway (~$33/mo)
+enable_nat_instance          = false   # Option B: t4g.nano NAT Instance (~$3/mo)
+
 # Set one of the two options below (not both):
 # comunio_snapshot_file      = "/app/tests/sample_snapshot.json"   # fixture mode (no live login)
 comunio_credentials_secret_arn = "arn:aws:secretsmanager:<region>:<account>:secret:/comunio/phase2/comuniopy-credentials-XXXXXX"

@@ -42,26 +42,26 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   count = var.create_database ? 1 : 0
 
-  identifier                  = "${local.name_prefix}-postgres"
-  engine                      = "postgres"
-  engine_version              = var.db_engine_version
-  instance_class              = var.db_instance_class
-  allocated_storage           = var.db_allocated_storage
-  max_allocated_storage       = var.db_max_allocated_storage
-  db_name                     = var.db_name
-  username                    = var.db_master_username
-  password                    = local.db_master_password_value
-  port                        = var.db_port
-  db_subnet_group_name        = aws_db_subnet_group.main[0].name
-  vpc_security_group_ids      = [aws_security_group.rds[0].id]
-  multi_az                    = var.db_multi_az
-  publicly_accessible         = false
-  storage_encrypted           = true
-  backup_retention_period     = var.db_backup_retention_days
-  deletion_protection         = var.db_deletion_protection
-  skip_final_snapshot         = var.db_skip_final_snapshot
-  apply_immediately           = var.db_apply_immediately
-  auto_minor_version_upgrade  = true
+  identifier                   = "${local.name_prefix}-postgres"
+  engine                       = "postgres"
+  engine_version               = var.db_engine_version
+  instance_class               = var.db_instance_class
+  allocated_storage            = var.db_allocated_storage
+  max_allocated_storage        = var.db_max_allocated_storage
+  db_name                      = var.db_name
+  username                     = var.db_master_username
+  password                     = local.db_master_password_value
+  port                         = var.db_port
+  db_subnet_group_name         = aws_db_subnet_group.main[0].name
+  vpc_security_group_ids       = [aws_security_group.rds[0].id]
+  multi_az                     = var.db_multi_az
+  publicly_accessible          = false
+  storage_encrypted            = true
+  backup_retention_period      = var.db_backup_retention_days
+  deletion_protection          = var.db_deletion_protection
+  skip_final_snapshot          = var.db_skip_final_snapshot
+  apply_immediately            = var.db_apply_immediately
+  auto_minor_version_upgrade   = true
   performance_insights_enabled = var.db_enable_performance_insights
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-postgres" })

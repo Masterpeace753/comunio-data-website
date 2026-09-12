@@ -9,6 +9,18 @@ variable "create_network" {
   default     = false
 }
 
+variable "enable_nat_gateway" {
+  description = "Create a managed NAT Gateway in a public subnet for private subnet egress (Option A)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_nat_instance" {
+  description = "Create a low-cost t4g.nano NAT Instance in a public subnet for private subnet egress (Option B)"
+  type        = bool
+  default     = false
+}
+
 variable "create_database" {
   description = "Create a managed PostgreSQL RDS instance and a DATABASE_URL secret"
   type        = bool
@@ -64,9 +76,14 @@ variable "ecr_repository_name" {
 }
 
 variable "image_tag" {
-  description = "ECR image tag that ECS should run"
+  description = "Immutable ECR image tag or commit SHA that ECS should run"
   type        = string
-  default     = "latest"
+  default     = "release-immutable"
+
+  validation {
+    condition     = trimspace(var.image_tag) != "" && var.image_tag != "latest" && var.image_tag != "latest:latest"
+    error_message = "image_tag must be a non-empty immutable tag or commit SHA and must not use 'latest'."
+  }
 }
 
 variable "task_cpu" {

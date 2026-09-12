@@ -60,6 +60,15 @@ def test_secret_mode_requires_secret_name(monkeypatch: pytest.MonkeyPatch) -> No
         client.load_credentials()
 
 
+def test_production_requires_secret_mode_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("COMUNIO_REQUIRE_SECRET_MODE", "false")
+    monkeypatch.delenv("COMUNIO_SECRET_NAME", raising=False)
+
+    with pytest.raises(ValueError, match="Production requires COMUNIO_REQUIRE_SECRET_MODE=true"):
+        load_settings()
+
+
 def test_snapshot_file_must_be_within_base_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     base_dir = tmp_path / "allowed"
     outside_dir = tmp_path / "outside"

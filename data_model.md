@@ -213,6 +213,16 @@ Bei groesserer Datenmenge:
 - G2: Fehlerlaeufe verwenden `error_code`; rohe Exception-Texte werden nicht persistiert.
 - G3: Snapshot-Input wird vor der Persistenz gegen Schema, Groesse und erlaubten Pfad geprueft.
 - G4: Die fachlichen Idempotenz-Constraints bleiben unveraendert; Security-Haertung darf keine Duplikate oder fachliche Historie erzeugen.
+- G5: Prod-Deploys erzwingen `COMUNIO_REQUIRE_SECRET_MODE=true` und verbieten ENV-Quellen; Bild- und Deployment-Referenzen muessen immutable sein.
+- G6: Der Release-Status private networking gilt nur dann als gruen, wenn der ECS-Task ohne Public IP gestartet, der ECR-/Secrets-Manager-Pfad im privaten VPC erfolgreich verifiziert und der DB-Verbindungsnachweis aus dem Task selbst erbracht wurde.
+
+### 8.3 Operational Release Gate (2026-09-12)
+- Der operative Status der AWS-Umgebung ist wie folgt festgelegt:
+  1. Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist in AWS ausgerollt, via `terraform apply` synchronisiert (`Apply complete!`) und mit `Exit-Code 0` verifiziert.
+  2. NAT-Optionen A (`enable_nat_gateway`) und B (`enable_nat_instance`) wurden als schaltbare Terraform-Variablen im Terraform-Code implementiert und im AWS-State synchronisiert.
+  3. Der Switch auf `assign_public_ip=false` (Enterprise Private Egress) bleibt schaltbar vorbereitet und wird erst aktiviert, wenn ein NAT Gateway / eine NAT Instance für private Egress freigegeben wird.
+- Die fachliche Datenmodell-Validierung bleibt unveraendert; die Runtime-Gates sind technische Betriebsnachweise und werden nicht als fachliche Datenbankdaten gespeichert.
+- `ingest_runs` dokumentiert den Laufstatus und `error_code`, aber keine internen AWS-Topologie- oder NAT-Details; diese Informationen verbleiben in CloudWatch, ECR-Logs und Terraform-/AWS-Auditdaten.
 
 ## 12. Konsolidierte Multi-Agent-Ergaenzungen
 

@@ -75,7 +75,7 @@ locals {
 
 resource "aws_ecr_repository" "backend" {
   name                 = var.ecr_repository_name
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true
@@ -172,6 +172,13 @@ resource "aws_ecs_task_definition" "ingest" {
   memory                   = tostring(var.task_memory)
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
+
+  lifecycle {
+    precondition {
+      condition     = !(var.environment == "prod" || var.environment == "production") || var.comunio_credentials_secret_arn != null
+      error_message = "Production deployments require a Secrets Manager ARN for the Comunio credentials and forbid ENV-only credential usage."
+    }
+  }
 
   container_definitions = jsonencode([
     {
