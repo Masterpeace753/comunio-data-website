@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 import src.ingest.runner as runner
-from src.ingest.comuniopy_client import ComunioLoginError
+from src.ingest.comuniopy_client import ComunioLoginError, ComunioSnapshotError
 
 
 @dataclass
@@ -128,4 +130,43 @@ def test_safe_detail_falls_back_for_unmapped_stage() -> None:
     assert runner._safe_detail("login") == "authentication_failed"
     assert runner._safe_detail("snapshot") == "snapshot_fetch_failed"
     assert runner._safe_detail("persistence") == "database_persistence_failed"
+
+
+def test_fetch_with_backoff_recovers_after_transient_snapshot_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    attempts: list[int] = []
+
+    class FlakyClient:
+        def fetch_snapshot(self) -> dict:
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise ComunioSnapshotError("temporary snapshot failure")
+            return {"teams": [], "players": [], "market_values": []}
+
+    sleeps: list[int] = []
+    monkeypatch.setattr(runner.time, "sleep", sleeps.append)
+    result = runner._fetch_with_backoff(FlakyClient(), attempts=4)
+
+    assert result == {"teams": [], "players": [], "market_values": []}
+    assert len(attempts) == 3
+    assert sleeps == [2, 4]
+
+    assert capsys.readouterr().out.count("snapshot_retry") == 2
+
+
+def test_fetch_with_backoff_stops_after_max_attempts(monkeypatch, capsys) -> None:
+    class AlwaysFailingClient:
+        def fetch_snapshot(self) -> dict:
+            raise ComunioSnapshotError("temporary snapshot failure")
+
+    sleeps: list[int] = []
+    monkeypatch.setattr(runner.time, "sleep", sleeps.append)
+
+    try:
+        runner._fetch_with_backoff(AlwaysFailingClient(), attempts=3)
+        assert False, "expected ComunioSnapshotError"
+    except ComunioSnapshotError as exc:
+        assert "after 3 attempts" in str(exc)
+
+    assert sleeps == [2, 4]
+    assert capsys.readouterr().out.count("snapshot_retry") == 2
 

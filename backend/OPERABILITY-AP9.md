@@ -83,6 +83,20 @@ terraform -chdir=infra/aws/terraform apply -var-file=terraform.tfvars -var="enab
 
 The existing manual snapshot command remains available for controlled recovery runs.
 
+## AP-10 idempotency and retry evidence
+
+- Snapshot fetch retries use bounded backoff of 2, 4, and 8 seconds and stop after four total attempts.
+- Login retries use the configured maximum and wait interval; exhausted retries end the task with a sanitized `run_failed stage=login` event.
+- Market values use the database key `(player_id, snapshot_date)` with `ON CONFLICT DO UPDATE`, so repeating a snapshot updates the same daily row instead of inserting a duplicate.
+- Automated tests cover transient snapshot recovery, bounded retry exhaustion, login retry exhaustion, and repeated market-value writes. Run them with:
+
+```powershell
+$env:PYTHONPATH = "backend"
+.\.venv\Scripts\python.exe -m pytest backend/tests -q
+```
+
+- The private-network release gate is separate from these application tests. Before switching to `assign_public_ip=false`, verify the NAT or VPC endpoint path, run the ECS task, and confirm a database connection from that task.
+
 ## AP-9 acceptance criteria
 
 - EventBridge rule is `ENABLED` with the approved schedule.

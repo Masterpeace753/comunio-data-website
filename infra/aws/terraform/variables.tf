@@ -19,6 +19,11 @@ variable "enable_nat_instance" {
   description = "Create a low-cost t4g.nano NAT Instance in a public subnet for private subnet egress (Option B)"
   type        = bool
   default     = false
+
+  validation {
+    condition     = !var.enable_nat_instance || !var.enable_nat_gateway
+    error_message = "enable_nat_gateway and enable_nat_instance are mutually exclusive."
+  }
 }
 
 variable "create_database" {

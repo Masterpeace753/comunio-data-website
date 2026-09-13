@@ -229,3 +229,64 @@ resource "aws_vpc_endpoint" "secretsmanager" {
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-secretsmanager-endpoint" })
 }
+
+resource "aws_security_group" "ecr_endpoint" {
+  count = var.create_network ? 1 : 0
+
+  name        = "${local.name_prefix}-ecr-endpoint"
+  description = "Allow ECS tasks to reach ECR through VPC endpoints"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [local.runtime_primary_security_group_id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-ecr-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  count = var.create_network ? 1 : 0
+
+  vpc_id              = local.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.ecr_endpoint[0].id]
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-ecr-api-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  count = var.create_network ? 1 : 0
+
+  vpc_id              = local.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.ecr_endpoint[0].id]
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-ecr-dkr-endpoint" })
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  count = var.create_network ? 1 : 0
+
+  vpc_id            = local.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private[0].id]
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-s3-endpoint" })
+}

@@ -277,7 +277,7 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 
 ### 12.3 P3: Härtung und Ausbau
 - AP-10a.6: Kartierte VPC-/Egress-Haertung mit NAT Gateway und ECR/Secrets Manager VPC Endpoints, danach abschliessende private Fargate-Freigabe.
-- AP-10 (in Arbeit, 2026-09-12): Idempotenz-/Retry-Nachweise und Release-Gate fuer private networking sind in Arbeit; der public-IP-Task ist verifiziert, aber die private Netzwerkfreigabe bleibt bis zu einem erfolgreichen Task-Run im privaten Pfad und einem DB-Reconnect-Nachweis blockiert.
+- AP-10 (Anwendungsnachweise umgesetzt, Release-Gate offen, 2026-09-13): Snapshot-Backoff (2/4/8 Sekunden, begrenzt auf vier Versuche), Login-Retry und idempotente Marktwert-Upserts sind durch fokussierte Tests nachgewiesen. Terraform erzwingt konsistente NAT-Auswahl und private Managed-VPCs benoetigen einen NAT-Pfad; ECR API/Docker sowie S3 und Secrets Manager VPC-Endpunkte sind fuer den privaten Pfad vorbereitet. Die produktive Freigabe bleibt bis zu einem erfolgreichen Task-Run ohne Public IP und einem DB-Reconnect-Nachweis blockiert.
 - AP-11: Danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
 
 ### 12.4 Verifizierter Stand der Release-Gate-Sequenz (2026-09-12)

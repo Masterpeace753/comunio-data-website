@@ -178,6 +178,11 @@ resource "aws_ecs_task_definition" "ingest" {
       condition     = !(var.environment == "prod" || var.environment == "production") || var.comunio_credentials_secret_arn != null
       error_message = "Production deployments require a Secrets Manager ARN for the Comunio credentials and forbid ENV-only credential usage."
     }
+
+    precondition {
+      condition     = var.assign_public_ip || !var.create_network || var.enable_nat_gateway || var.enable_nat_instance
+      error_message = "Private tasks in a Terraform-managed VPC require a NAT gateway or NAT instance for outbound Comunio and AWS access."
+    }
   }
 
   container_definitions = jsonencode([

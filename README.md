@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.4.2 (Login-Retry Patch)
+Release-Version: v0.4.4 (AP-10 Idempotency and Retry Evidence)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 
