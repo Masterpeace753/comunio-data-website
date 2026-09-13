@@ -72,3 +72,18 @@ output "login_retries_exhausted_alarm_name" {
   description = "CloudWatch alarm name that fires when a scheduled run exhausts all login retries"
   value       = aws_cloudwatch_metric_alarm.login_exhausted.alarm_name
 }
+
+output "api_alb_dns_name" {
+  description = "Public DNS name of the API Application Load Balancer"
+  value       = try(aws_lb.api[0].dns_name, null)
+}
+
+output "api_service_name" {
+  description = "ECS service name for the public API"
+  value       = try(aws_ecs_service.api[0].name, null)
+}
+
+output "api_task_definition_arn" {
+  description = "Task definition ARN for the public API"
+  value       = try(aws_ecs_task_definition.api[0].arn, null)
+}

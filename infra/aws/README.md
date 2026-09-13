@@ -2,6 +2,24 @@
 
 Infrastructure-Version: v0.5.0
 
+## Public API MVP
+
+The read-only FastAPI service is deployed as ECS service `comunio-prod-api` behind the public ALB:
+
+```text
+http://comunio-prod-api-1645234553.eu-central-1.elb.amazonaws.com
+```
+
+Verified endpoints:
+
+- `/health/live` -> HTTP 200
+- `/health/ready` -> HTTP 200 with database connectivity
+- `/api/v1/players?limit=1` -> HTTP 200
+
+The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
+`https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
+HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
+
 ## API database access
 
 The future public API service must use a separate PostgreSQL role with `SELECT`-only

@@ -193,6 +193,54 @@ resource "aws_security_group" "ecs" {
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-ecs" })
 }
 
+resource "aws_security_group" "api_alb" {
+  count = var.api_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-api-alb"
+  description = "Public ALB for the read-only Comunio API"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-api-alb" })
+}
+
+resource "aws_security_group" "api" {
+  count = var.api_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-api"
+  description = "ECS security group for the read-only Comunio API"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    from_port       = 8000
+    to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.api_alb[0].id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, { Name = "${local.name_prefix}-api" })
+}
+
 resource "aws_security_group" "secretsmanager_endpoint" {
   count = var.create_network ? 1 : 0
 
@@ -204,7 +252,7 @@ resource "aws_security_group" "secretsmanager_endpoint" {
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
-    security_groups = [local.runtime_primary_security_group_id]
+    security_groups = compact([local.runtime_primary_security_group_id, try(aws_security_group.api[0].id, null)])
   }
 
   egress {
@@ -241,7 +289,7 @@ resource "aws_security_group" "ecr_endpoint" {
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
-    security_groups = [local.runtime_primary_security_group_id]
+    security_groups = compact([local.runtime_primary_security_group_id, try(aws_security_group.api[0].id, null)])
   }
 
   egress {

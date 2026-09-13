@@ -251,7 +251,7 @@ Der aktuelle Stand liegt innerhalb von Phase 3:
 - AP-5 bis AP-10 sind auf Code-, Test- und Dokumentationsebene umgesetzt.
 - AP-9 laeuft als EventBridge-Scheduler; fuenf aufeinanderfolgende erfolgreiche Tagesfenster sind nachgewiesen.
 - AP-10 ist mit `v0.4.4` veroeffentlicht; AP-11-DEV ist fuer `v0.5.0` umgesetzt, Backend-Tests sowie Terraform-Formatierung und -Validierung sind gruen.
-- Das einzige verbleibende Gate vor dem API-Ausbau ist die private AWS-Netzwerkfreigabe. Der aktuelle MVP laeuft weiterhin mit `assign_public_ip=true`.
+- AP-11-PROD ist als kostenorientierter HTTP-MVP ausgerollt: ECS-Service hinter oeffentlichem ALB, `assign_public_ip=true`, Vercel-CORS und separater Read-only-DB-User/Secret. HTTPS/ACM, WAF und private API-Subnets bleiben spaetere Haertung.
 
 Naechste Schritte in verbindlicher Reihenfolge:
 
@@ -259,7 +259,7 @@ Naechste Schritte in verbindlicher Reihenfolge:
 1. AP-11-DEV vervollstaendigen: Spieler-, Team-, Historie- und Transfermarkt-Queries mit parametrisiertem SQL, 404/422/503-Verhalten und API-Tests.
 1. AP-12 als fachliche Anschlussentscheidung festlegen: Delta-Semantik fuer Vortag, Erstwert, Prozentwert und fehlende Referenzen.
 1. AP-13 inkrementell ausbauen: PostgreSQL-Integrationstests, OpenAPI-Vertrag, Fehlerpfade und P95-Baseline.
-1. AP-11-PROD freigeben: oeffentlichen ECS-Service/ALB mit Public-IP-MVP, Vercel-CORS-Allowlist, separatem Read-only-DB-User/Secret und Health-Checks bereitstellen. WAF, private Subnets und NAT bleiben bewusst spaetere Härtung; bis dahin gilt das reduzierte MVP-Risiko.
+1. AP-11-PROD ist fuer das MVP verifiziert: oeffentlicher ALB-DNS, gesunder ECS-Target, `/health/live`, `/health/ready` und Spieler-Endpunkt erfolgreich. Als naechstes folgen HTTPS/ACM, WAF und private API-Subnets als Haertung.
 
 ### AP-11 Umsetzungsumfang und Definition of Done
 
@@ -271,7 +271,7 @@ AP-11 wird in folgende Teilaufgaben zerlegt:
 - AP-11.4 Kernressourcen: Spieler, Teams und Marktwerthistorie mit typisierten Pydantic-Responses.
 - AP-11.5 Transfermarkt: read-only Route; bis zur Ingest-Erweiterung ist eine leere, valide Antwort zulaessig.
 - AP-11.6 Qualität: HTTP-, Mapping-, Fehler- und Pagination-Tests in CI.
-- AP-11.7 Production: eigener API-Container beziehungsweise ECS-Service, ALB, Vercel-CORS-Allowlist, separater Read-only-DB-User/Secret, Health-Checks und Rollback. WAF und private Tasks sind fuer das kostenorientierte MVP nicht verpflichtend und werden als spaetere Härtung gefuehrt.
+- AP-11.7 Production: eigener API-Container beziehungsweise ECS-Service, ALB, Vercel-CORS-Allowlist, separater Read-only-DB-User/Secret, Health-Checks und Rollback. Fuer das MVP verifiziert; WAF, HTTPS/ACM und private Tasks sind spaetere Haertung.
 
 AP-11 gilt technisch als erledigt, wenn alle vereinbarten read-only-Endpunkte versioniert und typisiert sind, keine ungebundenen SQL-Werte oder unlimitierten Listenabfragen existieren, unbekannte Ressourcen mit 404 beantwortet werden, ungültige Parameter mit 400/422 scheitern, Datenbankfehler als 503 erscheinen und API-Fehler keine sensiblen Details enthalten. Das kostenorientierte MVP ist bewusst oeffentlich lesbar, erlaubt nur `GET`, begrenzt CORS auf die Vercel-Origin und verwendet einen separaten Read-only-DB-User/Secret. Die Production-Abnahme erfordert zusaetzlich ECS-Health-Checks und einen DB-Reconnect-Nachweis; private Subnets und WAF bleiben spaetere Haertung.
 
@@ -530,7 +530,7 @@ Die Verifikation ueber `aws events describe-rule`, `aws ecs list-tasks`/`describ
 
 ### 19.4 Naechster Schritt
 
-- AP-10-Anwendungsnachweise sind mit `v0.4.4` abgeschlossen; AP-11-DEV ist Bestandteil von `v0.5.0`. Als naechstes ist gemaess Abschnitt 9 das oeffentliche AWS-MVP-Deployment mit Read-only-DB-User und Vercel-CORS nachzuweisen.
+- AP-10-Anwendungsnachweise sind mit `v0.4.4` abgeschlossen; AP-11-DEV und das oeffentliche MVP-Deployment sind Bestandteil von `v0.5.0`. Der naechste Schritt ist die Security-Haertung mit HTTPS/ACM, WAF und privaten API-Subnets.
 
 ## 20. AP-10a: Konsolidierte Agent-Beiträge und Hardening-Roadmap (2026-08-31)
 

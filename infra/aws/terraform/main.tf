@@ -35,6 +35,7 @@ locals {
   runtime_primary_security_group_id = length(var.security_group_ids) > 0 ? var.security_group_ids[0] : try(aws_security_group.ecs[0].id, null)
   resolved_database_url_secret_arn  = coalesce(var.database_url_secret_arn, try(aws_secretsmanager_secret.database_url[0].arn, null))
   use_live_comunio_secret           = var.comunio_snapshot_file == null && var.comunio_credentials_secret_arn != null
+  api_runtime_subnet_ids            = local.public_subnet_ids
   task_environment = concat(
     [
       {
@@ -114,11 +115,11 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
 }
 
 data "aws_iam_policy_document" "execution_secrets" {
-  count = local.resolved_database_url_secret_arn == null ? 0 : 1
+  count = local.resolved_database_url_secret_arn != null || (var.api_enabled && var.api_database_url_secret_arn != null) ? 1 : 0
 
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [local.resolved_database_url_secret_arn]
+    resources = compact([local.resolved_database_url_secret_arn, var.api_enabled ? var.api_database_url_secret_arn : null])
   }
 }
 
@@ -213,6 +214,273 @@ resource "aws_ecs_task_definition" "ingest" {
     cpu_architecture        = "X86_64"
     operating_system_family = "LINUX"
   }
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "api" {
+  count             = var.api_enabled ? 1 : 0
+  name              = "/ecs/${local.name_prefix}-api"
+  retention_in_days = var.log_retention_days
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role" "api_task" {
+  count              = var.api_enabled ? 1 : 0
+  name               = "${local.name_prefix}-api-task"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_ecs_task_definition" "api" {
+  count                    = var.api_enabled ? 1 : 0
+  family                   = "${local.name_prefix}-api"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = tostring(var.api_cpu)
+  memory                   = tostring(var.api_memory)
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.api_task[0].arn
+
+  lifecycle {
+    precondition {
+      condition     = var.api_database_url_secret_arn != null
+      error_message = "The public API requires a separate read-only DATABASE_URL Secrets Manager ARN."
+    }
+
+    precondition {
+      condition     = length(local.api_runtime_subnet_ids) >= 2
+      error_message = "The public API ALB requires at least two public subnets in different availability zones."
+    }
+  }
+
+  container_definitions = jsonencode([
+    {
+      name      = "api"
+      image     = "${aws_ecr_repository.backend.repository_url}:${var.api_image_tag}"
+      essential = true
+      environment = [
+        {
+          name  = "APP_ENV"
+          value = "production"
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "API_ALLOWED_ORIGINS"
+          value = var.api_allowed_origins
+        },
+      ]
+      secrets = [
+        {
+          name      = "DATABASE_URL"
+          valueFrom = var.api_database_url_secret_arn
+        },
+      ]
+      portMappings = [
+        {
+          containerPort = 8000
+          hostPort      = 8000
+          protocol      = "tcp"
+        },
+      ]
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')\""]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 30
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.api[0].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+    },
+  ])
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role" "api_bootstrap" {
+  count              = var.api_enabled ? 1 : 0
+  name               = "${local.name_prefix}-api-bootstrap"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume_role.json
+  tags               = local.common_tags
+}
+
+data "aws_iam_policy_document" "api_bootstrap_secrets" {
+  count = var.api_enabled ? 1 : 0
+
+  statement {
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = compact([
+      local.resolved_database_url_secret_arn,
+      var.api_database_url_secret_arn,
+    ])
+  }
+
+  statement {
+    actions   = ["secretsmanager:PutSecretValue"]
+    resources = [var.api_database_url_secret_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "api_bootstrap_secrets" {
+  count  = var.api_enabled ? 1 : 0
+  name   = "${local.name_prefix}-api-bootstrap-secrets"
+  role   = aws_iam_role.api_bootstrap[0].id
+  policy = data.aws_iam_policy_document.api_bootstrap_secrets[0].json
+}
+
+resource "aws_ecs_task_definition" "api_bootstrap" {
+  count                    = var.api_enabled ? 1 : 0
+  family                   = "${local.name_prefix}-api-bootstrap"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = tostring(var.api_cpu)
+  memory                   = tostring(var.api_memory)
+  execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.api_bootstrap[0].arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "api-bootstrap"
+      image     = "${aws_ecr_repository.backend.repository_url}:${var.api_image_tag}"
+      essential = true
+      command   = ["python", "-m", "src.ops.provision_api_readonly_user"]
+      environment = [
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "MASTER_DATABASE_URL_SECRET_ARN"
+          value = local.resolved_database_url_secret_arn
+        },
+        {
+          name  = "API_DATABASE_URL_SECRET_ARN"
+          value = var.api_database_url_secret_arn
+        },
+        {
+          name  = "API_DATABASE_ROLE"
+          value = "comunio_api_readonly"
+        },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.api[0].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "bootstrap"
+        }
+      }
+    },
+  ])
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.api_database_url_secret_arn != null
+      error_message = "The API bootstrap task requires the API Secrets Manager ARN."
+    }
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb" "api" {
+  count              = var.api_enabled ? 1 : 0
+  name               = "${local.name_prefix}-api"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.api_alb[0].id]
+  subnets            = local.api_runtime_subnet_ids
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_target_group" "api" {
+  count       = var.api_enabled ? 1 : 0
+  name        = "${local.name_prefix}-api"
+  port        = 8000
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = local.vpc_id
+
+  health_check {
+    enabled             = true
+    path                = "/health/ready"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_listener" "api_http" {
+  count             = var.api_enabled ? 1 : 0
+  load_balancer_arn = aws_lb.api[0].arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api[0].arn
+  }
+}
+
+resource "aws_ecs_service" "api" {
+  count                              = var.api_enabled ? 1 : 0
+  name                               = "${local.name_prefix}-api"
+  cluster                            = aws_ecs_cluster.backend.id
+  task_definition                    = aws_ecs_task_definition.api[0].arn
+  desired_count                      = var.api_desired_count
+  launch_type                        = "FARGATE"
+  platform_version                   = var.ecs_platform_version
+  health_check_grace_period_seconds  = 60
+  enable_ecs_managed_tags            = true
+  propagate_tags                     = "SERVICE"
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = local.api_runtime_subnet_ids
+    security_groups  = [aws_security_group.api[0].id]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api[0].arn
+    container_name   = "api"
+    container_port    = 8000
+  }
+
+  depends_on = [aws_lb_listener.api_http]
 
   tags = local.common_tags
 }

@@ -30,6 +30,16 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_ecs" {
   ip_protocol                  = "tcp"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "rds_from_api" {
+  count = var.create_database && var.api_enabled ? 1 : 0
+
+  security_group_id            = aws_security_group.rds[0].id
+  referenced_security_group_id = aws_security_group.api[0].id
+  from_port                    = var.db_port
+  to_port                      = var.db_port
+  ip_protocol                  = "tcp"
+}
+
 resource "aws_db_subnet_group" "main" {
   count = var.create_database ? 1 : 0
 

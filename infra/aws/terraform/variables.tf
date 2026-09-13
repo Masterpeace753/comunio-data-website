@@ -169,6 +169,47 @@ variable "api_database_url_secret_arn" {
   default     = null
 }
 
+variable "api_enabled" {
+  description = "Deploy the public read-only FastAPI ECS service and ALB"
+  type        = bool
+  default     = false
+}
+
+variable "api_image_tag" {
+  description = "Immutable ECR image tag for the API service"
+  type        = string
+  default     = "v0.5.0"
+
+  validation {
+    condition     = trimspace(var.api_image_tag) != "" && var.api_image_tag != "latest" && var.api_image_tag != "latest:latest"
+    error_message = "api_image_tag must be a non-empty immutable tag and must not use 'latest'."
+  }
+}
+
+variable "api_cpu" {
+  description = "Fargate CPU units for the API service"
+  type        = number
+  default     = 256
+}
+
+variable "api_memory" {
+  description = "Fargate memory in MiB for the API service"
+  type        = number
+  default     = 512
+}
+
+variable "api_desired_count" {
+  description = "Desired API task count for the cost-optimized MVP"
+  type        = number
+  default     = 1
+}
+
+variable "api_allowed_origins" {
+  description = "Comma-separated browser origins allowed by the API CORS policy"
+  type        = string
+  default     = "http://localhost:3000,http://127.0.0.1:3000"
+}
+
 variable "comunio_credentials_secret_arn" {
   description = "Secrets Manager ARN containing the Comunio username/password JSON"
   type        = string

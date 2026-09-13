@@ -20,7 +20,7 @@ def required(name: str) -> str:
 def main() -> None:
     region = os.getenv("AWS_REGION", "eu-central-1")
     master_secret_arn = required("MASTER_DATABASE_URL_SECRET_ARN")
-    api_secret_name = os.getenv("API_DATABASE_URL_SECRET_NAME", "comunio-prod/api-database-url")
+    api_secret_arn = required("API_DATABASE_URL_SECRET_ARN")
     role_name = os.getenv("API_DATABASE_ROLE", "comunio_api_readonly")
 
     secrets_client = boto3.client("secretsmanager", region_name=region)
@@ -34,8 +34,7 @@ def main() -> None:
             role_identifier = sql.Identifier(role_name)
             role_literal = sql.Literal(password)
             cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,))
-            role_exists = cursor.fetchone() is not None
-            if role_exists:
+            if cursor.fetchone() is not None:
                 cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD {}").format(role_identifier, role_literal))
             else:
                 cursor.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(role_identifier, role_literal))
@@ -49,13 +48,8 @@ def main() -> None:
             f"@{connection.info.host}:{connection.info.port}/{quote(database_name, safe='')}?sslmode=require"
         )
 
-    try:
-        secret = secrets_client.describe_secret(SecretId=api_secret_name)
-        secret_id = secret["ARN"]
-    except secrets_client.exceptions.ResourceNotFoundException:
-        secret_id = secrets_client.create_secret(Name=api_secret_name, Description="Read-only DATABASE_URL for the Comunio API")["ARN"]
-    secrets_client.put_secret_value(SecretId=secret_id, SecretString=api_dsn)
-    print(f"Provisioned read-only database role {role_name} and updated secret {api_secret_name}.")
+    secrets_client.put_secret_value(SecretId=api_secret_arn, SecretString=api_dsn)
+    print(f"Provisioned read-only database role {role_name}.")
 
 
 if __name__ == "__main__":

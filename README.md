@@ -29,11 +29,11 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die Backend-Tests bestehen.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die read-only FastAPI laeuft als ECS-Service hinter einem oeffentlichen Application Load Balancer; `/health/live`, `/health/ready` und ein Spieler-Endpunkt sind verifiziert.
 
 Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). Noch offen sind die verbindlichen State-/Security-Gates und die Phase-3-Arbeiten fuer die API.
 
-Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der aktuelle Production-Readiness-Status ist **No-Go**, bis insbesondere die Logging-Sanitization, die unveraenderliche Image-Referenz und die nicht umgehbare Produktions-Secret-Policy umgesetzt sind.
+Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der API-MVP ist oeffentlich ueber HTTP erreichbar und verwendet einen separaten Read-only-DB-User/Secret sowie Vercel-CORS. HTTPS/ACM, WAF und private API-Subnets bleiben bewusst nachgelagerte Haertung.
 
 ## Architektur und Planung
 
