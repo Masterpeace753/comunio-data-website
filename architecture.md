@@ -6,7 +6,7 @@ Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit fo
 - Datenquelle fuer Comunio-Daten: Comunio-REST-API, angesprochen ueber den eigenen `ComunioPyClient`-Adapter
 - Architektur: Microservices, REST-Schnittstellen
 - Plattform: AWS fuer Backend und Datenbank, Vercel fuer Frontend
-- Betrieb: containerisiert mit Docker und orchestriert in Kubernetes
+- Betrieb: containerisiert mit Docker und aktuell auf AWS ECS/Fargate betrieben; Kubernetes ist keine AP-11-Voraussetzung
 - Nicht-funktional: unter 2 Sekunden Ladezeit, 99.9 Prozent Verfuegbarkeit, OWASP Top 10 Schutz, Monitoring und Alerting
 
 ## 2. Architekturueberblick
@@ -14,12 +14,13 @@ Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit fo
 ```mermaid
 flowchart LR
   U[Web Nutzer] --> FE[Vercel Frontend]
-  FE --> API[API Gateway / Ingress]
+  FE --> WAF[AWS WAF]
+  WAF --> ALB[Application Load Balancer]
 
   subgraph AWS
-    API --> BFF[Backend API Service FastAPI]
-    BFF --> DB[(PostgreSQL)]
-    BFF --> C[(Redis Cache)]
+    ALB --> API[Private ECS Fargate API Service]
+    API --> DB[(Private PostgreSQL)]
+    API -. optional P2 .-> C[(Redis Cache)]
 
     subgraph Data Pipeline
       SCH[Scheduler<br/>EventBridge oder CronJob] --> ING[Ingest Service<br/>Python + eigener ComunioPyClient]
@@ -27,7 +28,7 @@ flowchart LR
       ING --> OBS[Logs/Metrics/Alerts]
     end
 
-    BFF --> OBS
+    API --> OBS
   end
 ```
 
@@ -67,15 +68,25 @@ flowchart LR
 
 ### 3.2 Backend API Service (FastAPI)
 - Verantwortung:
-  - REST-Endpunkte fuer Frontend und spaetere Integrationen
-  - Aggregationen und Delta-Berechnungen
-  - Optional Authentifizierung und Rollenmodell
-- Beispiel-Endpunkte:
-  - GET /players
-  - GET /players/{id}/history
-  - GET /teams
-  - GET /transfermarket
-  - GET /rankings
+  - Read-only-REST-Endpunkte fuer Frontend und spaetere Integrationen
+  - Abfragen und Projektionen aus PostgreSQL; Delta-Berechnungen gehoeren zu AP-12
+  - keine Schreiboperationen und keine Comunio-Kommunikation innerhalb von Request-Handlern
+- Vertragsbasis:
+  - Versionierter Namespace `/api/v1`
+  - `GET /api/v1/players`, `/players/{id}`, `/players/{id}/history`
+  - `GET /api/v1/teams`, `/teams/{id}` und `/api/v1/transfermarket`
+  - `GET /health/live` ohne Datenbankabhaengigkeit und `/health/ready` mit Datenbankpruefung
+  - Pagination mit `limit`/`offset`, harter Obergrenze 100 und deterministischer Sortierung
+  - ISO-8601 fuer Zeitpunkte, `YYYY-MM-DD` fuer Snapshot-Tage
+  - 404 fuer unbekannte Ressourcen, 422 fuer syntaktisch ungueltige Parameter, 503 bei nicht verfuegbarer Datenbank
+  - Fehlerantworten enthalten keine SQL-, DSN-, Token- oder Stacktrace-Details
+  - CORS wird ueber `API_ALLOWED_ORIGINS` auf die Vercel-Produktions-Origin und explizit freigegebene Preview-/Lokal-Origins begrenzt.
+
+- Laufzeitgrenze:
+  - Die API wird als eigener ECS/Fargate-Service betrieben und nicht als alternatives Kommando im einmaligen Ingest-Task.
+  - API-Tasks erhalten nur Datenbankzugriff und benoetigen keine Comunio-Credentials.
+  - Die API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; das Ingest-Secret wird nicht geteilt.
+  - Der aktuelle API-MVP ist lokal und gegen Testdatenbanken entwickelbar; Production bleibt an das private Networking-Gate gebunden.
 
 ### 3.3 Frontend Service (React auf Vercel)
 - Verantwortung:
@@ -120,6 +131,8 @@ flowchart LR
 - Zugriffsschutz:
   - Rollen- und Rechtekonzept fuer Admin und User
   - Least-Privilege IAM fuer AWS-Rollen
+- Frontend-Integration:
+  - Vercel ist die einzige standardmaessig erlaubte Browser-Origin; konkrete Produktions- und Preview-Origins werden per `API_ALLOWED_ORIGINS` konfiguriert.
 - OWASP Top 10 Massnahmen:
   - zentrale Abhaengigkeits-Scans
   - sichere Session- und Token-Verwaltung
@@ -162,10 +175,10 @@ flowchart LR
 ## 6. Verfuegbarkeit und Skalierung
 
 - Ziel: 99.9 Prozent Uptime
-- Horizontal skalierbare API Pods in Kubernetes
-- Read-Optimierung ueber Redis und DB-Indizes
+- Production-Ziel: mindestens zwei API-Tasks in privaten Subnets hinter einem ALB; Single-AZ-RDS bleibt eine dokumentierte MVP-Ausnahme.
+- Read-Optimierung zuerst ueber PostgreSQL-Indizes und begrenzte Queries; Redis ist eine messwertgesteuerte P2-Massnahme.
 - Entkopplung Ingest und API, damit Lastspitzen den Live-Zugriff nicht blockieren
-- Rollierende Deployments ohne Downtime
+- Rollierende ECS-Deployments mit Health Check und Rollback
 
 ## 7. Performance-Strategie
 
@@ -175,6 +188,12 @@ flowchart LR
   - Query-Optimierung und Composite-Indizes
   - Ergebnis-Caching fuer haeufige Rankings und Historien
   - Pagination und begrenzte Payload-Groessen
+
+### 7.1 AP-11 API-Betriebsvertrag
+- Standardabfragen muessen `limit <= 100` erzwingen und werden mit P95 unter 500 ms gemessen.
+- API-Logs enthalten Request-ID, Route, Statusklasse und Latenz, aber keine sensiblen Query- oder Datenbankdetails.
+- Vor einem oeffentlichen Production-Expose sind TLS, CORS-Allowlist, Rate Limiting und eine getrennte Read-only-Datenbankrolle verbindlich zu entscheiden.
+- ALB, API-Service und RDS werden mit getrennten Security Groups betrieben; RDS akzeptiert Verbindungen nur von API und Ingest.
 
 ## 8. Release-Stufen (aus Lastenheft abgeleitet)
 

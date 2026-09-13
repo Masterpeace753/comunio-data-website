@@ -162,6 +162,27 @@ Regel fuer fehlende Referenzwerte:
 
 ## 5. Indizes
 
+## 5. API-Lesevertraege fuer AP-11
+
+Die AP-11-API liest ausschliesslich aus den fachlichen Snapshot-Tabellen. Sie schreibt keine Fachdaten und verwendet einen separaten PostgreSQL-Read-only-User mit einem eigenen Secrets-Manager-Secret. Der Ingest-User bleibt schreibberechtigt; die beiden DSNs und ECS-Task-Rollen werden nicht geteilt.
+
+| API-Bereich | Tabellen | Vertrag |
+|-------------|----------|---------|
+| Spieler | `players`, `teams`, letzter Eintrag aus `market_values` | Filter nach Team, Position und Name; stabile Sortierung nach Name und ID |
+| Teams | `teams`, `players` | Filter nach Liga und Saison; `player_count` als Aggregat |
+| Historie | `market_values` | Filter nach Spieler und Zeitraum; Sortierung nach `snapshot_date DESC` |
+| Transfermarkt | `transfermarket_snapshots`, `players`, `teams` | Standard ist der neueste vorhandene Snapshot-Tag; leere Tabelle liefert eine leere Seite |
+
+Verbindliche API-Regeln:
+
+- Listen-Endpunkte begrenzen `limit` auf maximal 100 und liefern `items`, `limit`, `offset` und `total`.
+- Unbekannte Einzelressourcen liefern 404; leere Historien liefern 200 mit leerer `items`-Liste.
+- Snapshot-Tage werden als `YYYY-MM-DD`, technische Zeitpunkte als ISO-8601 ausgegeben.
+- Deltas werden nicht redundant gespeichert. AP-11 liefert die Rohhistorie; AP-12 definiert und berechnet Vortags-, Erstwert- und Prozentdeltas.
+- Fehlende Referenzwerte fuer Deltas bleiben `NULL` und werden nicht als `0` interpretiert.
+- `owner_name` aus dem Transfermarkt ist potenziell personenbezogen und darf erst nach einer fachlichen Freigabe oeffentlich verwendet werden.
+- Die aktuelle Ingest-Pipeline befuellt `transfermarket_snapshots` noch nicht. Der AP-11-Endpunkt liefert bis zur Ingest-Erweiterung einen validen leeren Datensatz statt fingierter Daten.
+
 Empfohlene Indizes:
 
 - players(comunio_player_id)

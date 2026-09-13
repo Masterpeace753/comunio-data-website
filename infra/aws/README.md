@@ -1,6 +1,26 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.4.4
+Infrastructure-Version: v0.5.0
+
+## API database access
+
+The future public API service must use a separate PostgreSQL role with `SELECT`-only
+permissions and a separate Secrets Manager secret. It must not reuse the ingest
+`DATABASE_URL` secret or the Comunio credentials.
+
+Provision the role and raw DSN secret manually from an authenticated operator session:
+
+```powershell
+$env:MASTER_DATABASE_URL_SECRET_ARN = "arn:aws:secretsmanager:<region>:<account>:secret:<ingest-database-secret>"
+$env:API_DATABASE_URL_SECRET_NAME = "comunio-prod/api-database-url"
+$env:API_DATABASE_ROLE = "comunio_api_readonly"
+python scripts/aws/provision-api-readonly-user.py
+```
+
+The script never prints the password or DSN. The resulting secret contains the raw
+`DATABASE_URL` value expected by ECS secret injection. Set the future API task's
+`api_database_url_secret_arn` to that secret; the ingest task continues using
+`database_url_secret_arn` with its write-capable role.
 
 This repository now includes a lean AWS baseline for the backend ingest job:
 

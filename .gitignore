@@ -51,7 +51,6 @@ yarn-error.log*
 # Terraform (AP-10a: state is now on S3 + DynamoDB, never commit locally)
 terraform.tfstate*
 .terraform/
-.terraform.lock.hcl
 crash.log
 override.tf
 override.tf.json

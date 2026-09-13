@@ -30,6 +30,12 @@ jobs:
       - name: Run backend tests
         run: python -m pytest tests -q
 
+      - name: Compile backend and operational scripts
+        run: python -m compileall -q src tests ../scripts/aws/provision-api-readonly-user.py
+
+      - name: Build API image
+        run: docker build --file Dockerfile.api --tag comunio-backend-api:ci .
+
   terraform-check:
     name: Terraform validation
     runs-on: ubuntu-latest

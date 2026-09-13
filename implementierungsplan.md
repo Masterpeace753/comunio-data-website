@@ -109,7 +109,7 @@ Arbeitspakete:
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung, Secret-Scan, Dependency-Scan und Terraform-Pruefungen)
-- AP-11 FastAPI-Endpunkte fuer Spieler, Teams, Historie, Transfermarkt
+- AP-11 FastAPI-Zugriffsschicht: API-Vertrag, FastAPI-App, Read-Repositories, Spieler/Teams/Historie/Transfermarkt und API-Tests
 - AP-12 Delta-Berechnungen in API
 - AP-13 API-Tests und Performance-Baselines
 
@@ -207,26 +207,43 @@ Massnahme: Strikte Meilensteine, Scope-Management, priorisierte Must-have-Liste.
 - Runbook fuer Stoerungsbehebung mit klaren Eskalationswegen
 
 ## 9. Naechste konkrete Schritte
-Der aktuelle Stand liegt am Uebergang von Phase 2 zu Phase 3:
-- AP-5 bis AP-8 sind auf Code- und Dokumentationsebene umgesetzt.
-- AWS-Infrastruktur, Migrationen und ein manueller Snapshot im Fixture-Modus sind End-to-End validiert.
-- Backend-Tests bestehen; ein produktiver Live-Snapshot mit Secrets Manager Credentials ist End-to-End validiert.
+Der aktuelle Stand liegt innerhalb von Phase 3:
+- AP-5 bis AP-10 sind auf Code-, Test- und Dokumentationsebene umgesetzt.
+- AP-9 laeuft als EventBridge-Scheduler; fuenf aufeinanderfolgende erfolgreiche Tagesfenster sind nachgewiesen.
+- AP-10 ist mit `v0.4.4` veroeffentlicht; AP-11-DEV ist fuer `v0.5.0` umgesetzt, Backend-Tests sowie Terraform-Formatierung und -Validierung sind gruen.
+- Das einzige verbleibende Gate vor dem API-Ausbau ist die private AWS-Netzwerkfreigabe. Der aktuelle MVP laeuft weiterhin mit `assign_public_ip=true`.
 
 Naechste Schritte in verbindlicher Reihenfolge:
-1. AP-10a Security-Baseline abschliessen: Secrets-Manager-Pflicht, DB-TLS-Gate, Logging-Sanitization und Snapshot-Input-Haertung.
-2. Terraform-State aus dem Repository entfernen beziehungsweise sicher verwalten und sensible Werte rotieren, falls sie exponiert waren.
-3. AP-7 mit echter Comunio-Anmeldung und produktiver DATABASE_URL ist nachgewiesen; der Lauf endete mit `run_success` und 600 geschriebenen Datensaetzen.
-4. AP-9 ist als EventBridge-Scheduler aktiv; drei aufeinanderfolgende Zeitfenster mit erfolgreichem `run_type=scheduled` und ohne Duplikate nachgewiesen (erledigt, siehe Abschnitt 19: fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31).
-5. Danach AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 als FastAPI-Zugriffsschicht mit API-Tests beginnen.
+1. AP-11-DEV umsetzen: versionierter read-only API-Vertrag, FastAPI-App, typisierte Schemas, Pagination und Health-Endpunkte.
+2. AP-11-DEV vervollstaendigen: Spieler-, Team-, Historie- und Transfermarkt-Queries mit parametrisiertem SQL, 404/422/503-Verhalten und API-Tests.
+3. AP-12 als fachliche Anschlussentscheidung festlegen: Delta-Semantik fuer Vortag, Erstwert, Prozentwert und fehlende Referenzen.
+4. AP-13 inkrementell ausbauen: PostgreSQL-Integrationstests, OpenAPI-Vertrag, Fehlerpfade und P95-Baseline.
+5. AP-11-PROD freigeben: oeffentlichen ECS-Service/ALB mit Public-IP-MVP, Vercel-CORS-Allowlist, separatem Read-only-DB-User/Secret und Health-Checks bereitstellen. WAF, private Subnets und NAT bleiben bewusst spaetere Härtung; bis dahin gilt das reduzierte MVP-Risiko.
+
+### AP-11 Umsetzungsumfang und Definition of Done
+
+AP-11 wird in folgende Teilaufgaben zerlegt:
+
+- AP-11.1 API-Vertrag: `/api/v1`, Endpunkte, Fehlerformat, Pagination und OpenAPI-Schema.
+- AP-11.2 FastAPI-App: App Factory, Dependency-Lifecycle sowie `/health/live` und `/health/ready`.
+- AP-11.3 Read-Schicht: getrennte Repository-/Service-Funktionen fuer parametrisierte PostgreSQL-Abfragen.
+- AP-11.4 Kernressourcen: Spieler, Teams und Marktwerthistorie mit typisierten Pydantic-Responses.
+- AP-11.5 Transfermarkt: read-only Route; bis zur Ingest-Erweiterung ist eine leere, valide Antwort zulaessig.
+- AP-11.6 Qualität: HTTP-, Mapping-, Fehler- und Pagination-Tests in CI.
+- AP-11.7 Production: eigener API-Container beziehungsweise ECS-Service, ALB, Vercel-CORS-Allowlist, separater Read-only-DB-User/Secret, Health-Checks und Rollback. WAF und private Tasks sind fuer das kostenorientierte MVP nicht verpflichtend und werden als spaetere Härtung gefuehrt.
+
+AP-11 gilt technisch als erledigt, wenn alle vereinbarten read-only-Endpunkte versioniert und typisiert sind, keine ungebundenen SQL-Werte oder unlimitierten Listenabfragen existieren, unbekannte Ressourcen mit 404 beantwortet werden, ungültige Parameter mit 400/422 scheitern, Datenbankfehler als 503 erscheinen und API-Fehler keine sensiblen Details enthalten. Das kostenorientierte MVP ist bewusst oeffentlich lesbar, erlaubt nur `GET`, begrenzt CORS auf die Vercel-Origin und verwendet einen separaten Read-only-DB-User/Secret. Die Production-Abnahme erfordert zusaetzlich ECS-Health-Checks und einen DB-Reconnect-Nachweis; private Subnets und WAF bleiben spaetere Haertung.
 
 ## 10. Technische Entscheidungen fuer Phase 3
 
 Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu treffen oder zu bestaetigen:
 
-- Authentifizierung: JWT/OAuth2-Variante fuer API festlegen.
+- Authentifizierung: Fuer das kostenorientierte MVP ist die API bewusst oeffentlich lesbar und read-only; JWT/OAuth2 wird erst bei privaten oder benutzerbezogenen Daten verpflichtend.
+- Frontend-Origin: Vercel-Produktions-Origin ueber `API_ALLOWED_ORIGINS` konfigurieren; keine Wildcard-Origin in Production.
+- Datenbankzugriff: API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; Ingest bleibt schreibberechtigt.
 - Scheduler: EventBridge in Produktion, lokale Variante fuer Entwicklung.
 - Secrets: AWS Secrets Manager in Produktion, keine Secrets im Repository.
-- Skalierung: API Pod Min/Max, Connection-Pool und Autoscaling-Grenzen definieren.
+- Skalierung: Ein API-Task fuer das kostenorientierte MVP; API Pod Min/Max, Connection-Pool und Autoscaling-Grenzen sind spaetere Production-Entscheidungen.
 - Deployment: Rolling Deployments und Rollback-Prozess verbindlich dokumentieren.
 
 ## 11. Messbare Akzeptanzkriterien je Meilenstein
@@ -242,6 +259,8 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 - API-Testabdeckung liegt bei mindestens 75 Prozent.
 - Security-Gates S1-S4 sind ohne Verletzung aktiv.
 - In Produktion: 0 Runs mit ENV-Credentials.
+- AP-11-API-Vertrag, Pagination und Fehlerformat sind versioniert dokumentiert.
+- AP-12-Delta-Semantik ist fuer positive, negative und fehlende Referenzwerte getestet.
 
 ### M3 (Woche 17)
 - Frontend-Hauptseiten erreichen Ladezeit unter 2 Sekunden.
@@ -436,7 +455,7 @@ Die Verifikation ueber `aws events describe-rule`, `aws ecs list-tasks`/`describ
 - Damit gelten Abschnitt 3 Punkt 4, AP-9.1 (Abschnitt 12.2) sowie das entsprechende Akzeptanzkriterium in `backend/OPERABILITY-AP9.md` als erfuellt.
 
 ### 19.4 Naechster Schritt
-- AP-10/AP-11 gemaess Abschnitt 9 und 12.3 fortsetzen: Idempotenz-/Retry-Nachweise vervollstaendigen und danach die FastAPI-Endpunkte umsetzen.
+- AP-10-Anwendungsnachweise sind mit `v0.4.4` abgeschlossen; AP-11-DEV ist Bestandteil von `v0.5.0`. Als naechstes ist gemaess Abschnitt 9 das oeffentliche AWS-MVP-Deployment mit Read-only-DB-User und Vercel-CORS nachzuweisen.
 
 ## 20. AP-10a: Konsolidierte Agent-Beiträge und Hardening-Roadmap (2026-08-31)
 

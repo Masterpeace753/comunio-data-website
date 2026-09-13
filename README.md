@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.4.4 (AP-10 Idempotency and Retry Evidence)
+Release-Version: v0.5.0 (AP-11 Read-only FastAPI API, Vercel CORS and CI)
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 

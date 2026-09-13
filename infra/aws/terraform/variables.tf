@@ -163,6 +163,12 @@ variable "database_url_secret_arn" {
   default     = null
 }
 
+variable "api_database_url_secret_arn" {
+  description = "Secrets Manager ARN containing the API read-only DATABASE_URL; used by the future public API service, never by ingest"
+  type        = string
+  default     = null
+}
+
 variable "comunio_credentials_secret_arn" {
   description = "Secrets Manager ARN containing the Comunio username/password JSON"
   type        = string
