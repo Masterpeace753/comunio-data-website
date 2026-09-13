@@ -1,14 +1,17 @@
 # Implementierungsplan fuer das Comunio-Projekt
 
 ## 1. Zielbild
+
 Dieser Plan setzt das Lastenheft in umsetzbare Arbeitspakete um und orientiert sich an den vorgegebenen Ausbaustufen, dem Zeitplan und den nicht-funktionalen Anforderungen.
 
 Rahmen:
+
 - Gesamtzeit: 22 Wochen
 - Team: Architektur, Backend, Frontend, DevOps, Security
 - Zielkosten: Infrastruktur so niedrig wie moeglich
 
 ## 2. Liefergegenstaende
+
 - Laufender Ingest-Prozess auf Basis ComunioPy
 - PostgreSQL-Datenmodell mit Historisierung
 - FastAPI-Backend mit stabilen Endpunkten
@@ -19,91 +22,110 @@ Rahmen:
 ## 3. Roadmap nach Wochen
 
 ### Phase 1: Analyse und Setup (Woche 1 bis 2)
+
 Ziele:
+
 - Anforderungen finalisieren
 - Architektur und Datenmodell verabschieden
 - Repositories, Konventionen und Grundgeruest aufsetzen
 
 Arbeitspakete:
+
 - AP-1 Lastenheft-Review und Scope-Fixierung
 - AP-2 Architekturentscheidungen dokumentieren
 - AP-3 Datenmodell finalisieren
 - AP-4 Dev-Umgebung, Docker-Basis, Branching-Strategie
 
 Ergebnis:
+
 - Freigegebene Zielarchitektur
 - Freigegebenes Datenmodell
 - Projekt-Basis lauffaehig
 
 ### Phase 2: Architekturdesign und Ingest-MVP (Woche 3 bis 5)
+
 Ziele:
+
 - Stabiler manueller Abruf als erste Ausbaustufe
 
 Arbeitspakete:
+
 - AP-5 ComunioPy-Integration und Login-Flows
 - AP-6 Tabellen und Migrationen umsetzen
 - AP-7 Manueller Snapshot-Job fuer Spieler, Teams, Marktwerte
 - AP-8 Grundlegendes Logging und Fehlerbehandlung
 
 Hinweis zur aktuellen Umsetzung:
+
 - AP-5 bis AP-8 sind als Phase-2 Ergebnisstand umgesetzt.
 
 Ergebnis:
+
 - Login-Flow ueber ComunioPy ist technisch vorbereitet und testbar.
 - Migrationsgrundlage fuer PostgreSQL ist umgesetzt.
 - Manueller Snapshot-Lauf schreibt Teams, Spieler und Marktwerte idempotent.
 - Basis-Fehlerbehandlung mit Retry/Backoff und ingest_runs Status-Tracking ist aktiv.
 
 ### AP-5 Deliverables (umgesetzt)
+
 - Backend-Konfiguration fuer Credentials aus AWS Secrets Manager oder ENV.
 - ComunioPy-Client-Bootstrap mit expliziter Login-Validierung.
 - Manueller Runner fuer Login-Flow (ohne Snapshot-Verarbeitung).
 
 ### AP-6 Deliverables (umgesetzt)
+
 - SQL-Migrationen fuer Core-, Timeseries- und Audit/Event-Tabellen.
 - Migration-Runner mit schema_migrations zur Versionsnachverfolgung.
 - Kern-Indizes und Idempotenz-Constraints im Schema.
 
 ### AP-7 Deliverables (umgesetzt)
+
 - Manueller Snapshot-Lauf im Runner (`--mode snapshot`).
 - Snapshot-Normalisierung fuer Teams, Spieler und Marktwerte.
 - Idempotente Upserts auf Tabellenebene.
 - ingest_runs Tracking fuer success/failed und records_written.
 
 ### AP-8 Deliverables (umgesetzt)
+
 - Basis-Error-Handling mit klaren Fehlermeldungen je Pipeline-Schritt.
 - Retry/Backoff fuer Snapshot-Abruf (2s, 4s, 8s, insgesamt 4 Versuche).
 - Operatives Smoke-Runbook fuer AP-5/AP-6 vorhanden und weiterverwendbar.
 
 ### AP-5/AP-6 Definition of Done
+
 - AP-5:
-	- Login-Bootstrap liefert success oder failed mit klarer Ursache.
-	- Keine Secrets im Quellcode oder im Repository.
+  - Login-Bootstrap liefert success oder failed mit klarer Ursache.
+  - Keine Secrets im Quellcode oder im Repository.
 - AP-6:
-	- Migrationen lassen sich sequenziell anwenden.
-	- Wiederholte Ausfuehrung erzeugt keine doppelten Tabellen.
-	- Schema umfasst alle fuer AP-7 benoetigten Kernstrukturen.
+  - Migrationen lassen sich sequenziell anwenden.
+  - Wiederholte Ausfuehrung erzeugt keine doppelten Tabellen.
+  - Schema umfasst alle fuer AP-7 benoetigten Kernstrukturen.
 
 ### AP-7/AP-8 Definition of Done
+
 - AP-7:
-	- Manuelle Ausfuehrung verarbeitet Snapshotdaten fuer Teams, Spieler, Marktwerte.
-	- Wiederholte Ausfuehrung am gleichen Tag erzeugt keine Duplikate in market_values.
+  - Manuelle Ausfuehrung verarbeitet Snapshotdaten fuer Teams, Spieler, Marktwerte.
+  - Wiederholte Ausfuehrung am gleichen Tag erzeugt keine Duplikate in market_values.
 - AP-8:
-	- Snapshot-Abruf hat Retry/Backoff und bricht nach Maximalversuchen kontrolliert ab.
-	- Fehlerfaelle werden als failed-Lauf in ingest_runs nachvollziehbar.
+  - Snapshot-Abruf hat Retry/Backoff und bricht nach Maximalversuchen kontrolliert ab.
+  - Fehlerfaelle werden als failed-Lauf in ingest_runs nachvollziehbar.
 
 ### AP-5/AP-6 Smoke-Check-Runbook
+
 - Operativer Prüfpfad ist dokumentiert in `backend/OPERABILITY-AP5-AP6.md`.
 - Verbindliche Gates vor AP-7:
-	- G1 Login-Bootstrap PASS
-	- G2 Migrations-Idempotenz PASS
-	- G3 Schema-Integritaet PASS
+  - G1 Login-Bootstrap PASS
+  - G2 Migrations-Idempotenz PASS
+  - G3 Schema-Integritaet PASS
 
 ### Phase 3: Automatisierung und Backend-API (Woche 6 bis 10)
+
 Ziele:
+
 - Taeglicher Abruf und API als Zugriffsschicht
 
 Arbeitspakete:
+
 - AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert, aktiviert und Stabilitaetsnachweis ueber drei Zeitfenster erbracht, siehe Abschnitt 19)
 - AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt): 3 Login-Versuche im 5-Minuten-Abstand, CloudWatch-Alarm bei erschoepften Retries
 - AP-10 Idempotenz-Regeln und Retry-Strategien
@@ -114,14 +136,18 @@ Arbeitspakete:
 - AP-13 API-Tests und Performance-Baselines
 
 Ergebnis:
+
 - Taegliche Updates stabil
 - Saubere API-Endpunkte fuer Frontend und Integrationen
 
 ### Phase 4: Frontend MVP und Ausbau (Woche 11 bis 17)
+
 Ziele:
+
 - Minimal-Frontend und danach Komfort-Ausbau
 
 Arbeitspakete:
+
 - AP-14 Basis-Dashboard (Uebersicht, Team, Spieler)
 - AP-15 Marktwert-Historie und Ranking-Ansichten
 - AP-16 Transfermarkt-Uebersicht
@@ -129,14 +155,18 @@ Arbeitspakete:
 - AP-18 Frontend-Tests und Monitoring-Einbindung
 
 Ergebnis:
+
 - Nutzbare Web-App mit Kernfunktionalitaet
 - Gute Nutzbarkeit fuer taegliche Anwendung
 
 ### Phase 5: Skalierung, Security, CI/CD und Release (Woche 18 bis 22)
+
 Ziele:
+
 - Produktionsreife gemaess Lastenheft
 
 Arbeitspakete:
+
 - AP-19 Lasttests und Caching-Strategie
 - AP-20 Security-Hardening nach OWASP Top 10
 - AP-20a FinOps-Controls (Tag-Compliance, Budget-Alarme, monatlicher Rightsizing-Review)
@@ -145,10 +175,12 @@ Arbeitspakete:
 - AP-23 Go-Live-Checkliste und Deployment
 
 Ergebnis:
+
 - Produktionsfaehige Plattform
 - Uptime-, Security- und Wartbarkeitsziele adressiert
 
 ## 4. Zuordnung zu den Ausbaustufen
+
 - Stufe Manueller Abruf: Phase 2
 - Stufe Taeglicher Abruf: Phase 3
 - Stufe Backend-API: Phase 3
@@ -162,21 +194,25 @@ Ergebnis:
 ## 5. Definition of Done je Meilenstein
 
 ### M1 Ende Woche 5
+
 - Manueller Ingest-End-to-End laeuft
 - Daten korrekt in Kern-Tabellen gespeichert
 - Fehlerfaelle dokumentiert
 
 ### M2 Ende Woche 10
+
 - Taeglicher Ingest stabil ueber mindestens 7 Tage
 - API-Endpunkte liefern valide Antworten
 - Automatisierte Tests fuer Kernlogik vorhanden
 
 ### M3 Ende Woche 17
+
 - Frontend-MVP und Ausbaufeatures verfuegbar
 - Kern-User-Flows ohne Blocker nutzbar
 - Ladezeitziele fuer Hauptseiten messbar verbessert
 
 ### M4 Ende Woche 22
+
 - Security- und Betriebsanforderungen umgesetzt
 - CI/CD mit Quality Gates aktiv
 - Release- und Rollback-Prozess getestet
@@ -184,41 +220,46 @@ Ergebnis:
 ## 6. Risiken und Gegenmassnahmen
 
 1. Risiko: Instabile externe Datenquelle
-Massnahme: Retry, Backoff, Alerting, robustes Mapping, Fallback auf letzten gueltigen Snapshot.
+   Massnahme: Retry, Backoff, Alerting, robustes Mapping, Fallback auf letzten gueltigen Snapshot.
 
-2. Risiko: Performanceprobleme bei wachsender Datenmenge
-Massnahme: Indexstrategie, Query-Tuning, Caching, Lasttests vor Go-Live.
+1. Risiko: Performanceprobleme bei wachsender Datenmenge
+   Massnahme: Indexstrategie, Query-Tuning, Caching, Lasttests vor Go-Live.
 
-3. Risiko: Sicherheitsluecken durch schnelle Iteration
-Massnahme: Security-Checks in CI, Dependency-Scanning, Threat-Model-Review pro Release.
+1. Risiko: Sicherheitsluecken durch schnelle Iteration
+   Massnahme: Security-Checks in CI, Dependency-Scanning, Threat-Model-Review pro Release.
 
-4. Risiko: Zeitplanabweichungen
-Massnahme: Strikte Meilensteine, Scope-Management, priorisierte Must-have-Liste.
+1. Risiko: Zeitplanabweichungen
+   Massnahme: Strikte Meilensteine, Scope-Management, priorisierte Must-have-Liste.
 
 ## 7. Test- und Qualitaetsstrategie
+
 - Unit-Tests fuer Ingest-Mapping, Delta-Berechnung, API-Services
 - Integrationstests fuer DB und API-Endpunkte
 - End-to-End-Tests fuer zentrale Frontend-Flows
 - Nicht-funktionale Tests: Performance, Stabilitaet, Security-Checks
 
 ## 8. Betriebs- und Monitoring-Konzept
+
 - Dashboards fuer Ingest-Status, API-Latenz, Fehlerquote
 - Alerts bei Job-Ausfall, leerem Snapshot, hoher Fehlerquote
 - Runbook fuer Stoerungsbehebung mit klaren Eskalationswegen
 
 ## 9. Naechste konkrete Schritte
+
 Der aktuelle Stand liegt innerhalb von Phase 3:
+
 - AP-5 bis AP-10 sind auf Code-, Test- und Dokumentationsebene umgesetzt.
 - AP-9 laeuft als EventBridge-Scheduler; fuenf aufeinanderfolgende erfolgreiche Tagesfenster sind nachgewiesen.
 - AP-10 ist mit `v0.4.4` veroeffentlicht; AP-11-DEV ist fuer `v0.5.0` umgesetzt, Backend-Tests sowie Terraform-Formatierung und -Validierung sind gruen.
 - Das einzige verbleibende Gate vor dem API-Ausbau ist die private AWS-Netzwerkfreigabe. Der aktuelle MVP laeuft weiterhin mit `assign_public_ip=true`.
 
 Naechste Schritte in verbindlicher Reihenfolge:
+
 1. AP-11-DEV umsetzen: versionierter read-only API-Vertrag, FastAPI-App, typisierte Schemas, Pagination und Health-Endpunkte.
-2. AP-11-DEV vervollstaendigen: Spieler-, Team-, Historie- und Transfermarkt-Queries mit parametrisiertem SQL, 404/422/503-Verhalten und API-Tests.
-3. AP-12 als fachliche Anschlussentscheidung festlegen: Delta-Semantik fuer Vortag, Erstwert, Prozentwert und fehlende Referenzen.
-4. AP-13 inkrementell ausbauen: PostgreSQL-Integrationstests, OpenAPI-Vertrag, Fehlerpfade und P95-Baseline.
-5. AP-11-PROD freigeben: oeffentlichen ECS-Service/ALB mit Public-IP-MVP, Vercel-CORS-Allowlist, separatem Read-only-DB-User/Secret und Health-Checks bereitstellen. WAF, private Subnets und NAT bleiben bewusst spaetere Härtung; bis dahin gilt das reduzierte MVP-Risiko.
+1. AP-11-DEV vervollstaendigen: Spieler-, Team-, Historie- und Transfermarkt-Queries mit parametrisiertem SQL, 404/422/503-Verhalten und API-Tests.
+1. AP-12 als fachliche Anschlussentscheidung festlegen: Delta-Semantik fuer Vortag, Erstwert, Prozentwert und fehlende Referenzen.
+1. AP-13 inkrementell ausbauen: PostgreSQL-Integrationstests, OpenAPI-Vertrag, Fehlerpfade und P95-Baseline.
+1. AP-11-PROD freigeben: oeffentlichen ECS-Service/ALB mit Public-IP-MVP, Vercel-CORS-Allowlist, separatem Read-only-DB-User/Secret und Health-Checks bereitstellen. WAF, private Subnets und NAT bleiben bewusst spaetere Härtung; bis dahin gilt das reduzierte MVP-Risiko.
 
 ### AP-11 Umsetzungsumfang und Definition of Done
 
@@ -249,11 +290,13 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 ## 11. Messbare Akzeptanzkriterien je Meilenstein
 
 ### M1 (Woche 5)
+
 - Zwei aufeinanderfolgende Ingest-Runs erzeugen keine Duplikate.
 - Kern-Tabellen sind nach Testlauf valide befuellt.
 - Parser- und Mapping-Tests erreichen mindestens 80 Prozent Coverage.
 
 ### M2 (Woche 10)
+
 - Taeglicher Lauf ist ueber 7 Tage stabil.
 - API P95 fuer Standardendpunkte liegt unter 500 ms.
 - API-Testabdeckung liegt bei mindestens 75 Prozent.
@@ -263,11 +306,13 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 - AP-12-Delta-Semantik ist fuer positive, negative und fehlende Referenzwerte getestet.
 
 ### M3 (Woche 17)
+
 - Frontend-Hauptseiten erreichen Ladezeit unter 2 Sekunden.
 - Kern-User-Flows funktionieren auf Desktop und Mobile.
 - E2E-Tests fuer zentrale Flows sind vorhanden.
 
 ### M4 (Woche 22)
+
 - Security-Scan ohne offene High/Critical Findings.
 - Backup/Restore-Test erfolgreich.
 - CI/CD fuehrt Build, Tests und Deployments reproduzierbar aus.
@@ -278,6 +323,7 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung und beschreibt den Stand nach dem Security-Review vom 2026-08-25.
 
 ### 12.1 P1: Production-Blocker
+
 - AP-10a.1 (erledigt, 2026-08-31): Rohe Exception-Details aus `backend/src/ingest/runner.py` entfernt; feste Fehlertaxonomie (`_safe_detail`) mit Sanitization-Tests in `backend/tests/test_scheduled_runner.py` eingefuehrt. Siehe Abschnitt 20.2.
 - AP-10a.2 (erledigt, 2026-08-31): Terraform-State-Exposition geprueft (kein Git-/GitHub-Vektor, siehe Abschnitt 20.3) und Remote-Backend (S3 + DynamoDB-Lock) als Code vorbereitet (`infra/aws/terraform/state_backend.tf`, `backend.tf`). Rotation der RDS-Credentials bewusst auf P2 verschoben (dokumentierte Ausnahme, kein Expositionsvektor).
 - AP-10a.3 (erledigt, 2026-09-12): `backend/src/config.py` erzwingt in `APP_ENV=prod|production` den Pflichtmodus `COMUNIO_REQUIRE_SECRET_MODE=true`; ein ENV-Fallback wirft jetzt sofort einen Fehler und verhindert damit das unkontrollierte Blue/Green-Deployment mit Secret-Exposition.
@@ -286,20 +332,23 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 - Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs (erfuellt); State-Bootstrap-Code ist vorbereitet, der eigentliche Backend-Umzug (`terraform init -migrate-state`) steht als bewusst manuell freizugebender Schritt aus, da er den produktiven State-Speicherort aendert.
 
 ### 12.2 P2: Produktionshygiene
+
 - AP-10a.5 Release-Gate (aktiv, 2026-09-12): In der folgenden Reihenfolge muss die private AWS-Freigabe erfolgen:
   1. Funktionierender NAT-/ECR-Endpoint-Pfad im privaten VPC-Setup.
-  2. Erneuter ECS-Task-Run ohne Public IP (`assign_public_ip=false`) nach erfolgreichem Netzwerk-Smoke-Test.
-  3. DB-Verbindungsnachweis aus dem Task selbst.
-  4. Danach `assign_public_ip=false` als Standard-Release-Switch festschreiben.
+  1. Erneuter ECS-Task-Run ohne Public IP (`assign_public_ip=false`) nach erfolgreichem Netzwerk-Smoke-Test.
+  1. DB-Verbindungsnachweis aus dem Task selbst.
+  1. Danach `assign_public_ip=false` als Standard-Release-Switch festschreiben.
 - AP-10b (erledigt, 2026-09-12): CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning und Dependency-Scanning sind in `.github/workflows/ci.yml` dokumentiert; die Pipeline blockiert Deployments bei Quality-Gate-Verletzung.
 - AP-9.1 (erledigt, 2026-08-31): Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachgewiesen; siehe Abschnitt 19 fuer die vollstaendige Evidenz.
 
 ### 12.3 P3: Härtung und Ausbau
+
 - AP-10a.6: Kartierte VPC-/Egress-Haertung mit NAT Gateway und ECR/Secrets Manager VPC Endpoints, danach abschliessende private Fargate-Freigabe.
 - AP-10 (Anwendungsnachweise umgesetzt, Release-Gate offen, 2026-09-13): Snapshot-Backoff (2/4/8 Sekunden, begrenzt auf vier Versuche), Login-Retry und idempotente Marktwert-Upserts sind durch fokussierte Tests nachgewiesen. Terraform erzwingt konsistente NAT-Auswahl und private Managed-VPCs benoetigen einen NAT-Pfad; ECR API/Docker sowie S3 und Secrets Manager VPC-Endpunkte sind fuer den privaten Pfad vorbereitet. Die produktive Freigabe bleibt bis zu einem erfolgreichen Task-Run ohne Public IP und einem DB-Reconnect-Nachweis blockiert.
 - AP-11: Danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
 
 ### 12.4 Verifizierter Stand der Release-Gate-Sequenz (2026-09-12)
+
 - Schritt 1: Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist in AWS ausgerollt, via `terraform apply` synchronisiert (`Apply complete! Resources: 0 added, 0 changed, 0 destroyed`) und mit `Exit-Code 0` verifiziert.
 - Schritt 2: NAT-Optionen A (`enable_nat_gateway`) und B (`enable_nat_instance`) wurden als schaltbare Terraform-Variablen in `infra/aws/terraform/network.tf` implementiert, validiert und im AWS-State synchronisiert.
 - Schritt 3: Der Switch auf `assign_public_ip=false` (AP-10a.6 / Enterprise Private Egress) bleibt schaltbar vorbereitet und wird erst aktiviert, wenn ein NAT Gateway / eine NAT Instance für private Egress freigegeben wird.
@@ -307,13 +356,15 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 ## 13. Security-Remediation-Sequenz (konsolidiert)
 
 Diese Reihenfolge ist verbindlich vor dem regulaeren Produktionsbetrieb und dem weiteren Ausbau ab AP-10:
+
 1. Credentials-Policy: Produktion nur Secrets Manager, kein ENV-Fallback.
-2. DB-Transport-Policy: TLS `sslmode=require` oder staerker als Laufzeit-Gate.
-3. Logging-Sanitization: keine rohen Exceptions, strukturierte `error_code`-Logs.
-4. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
-5. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
+1. DB-Transport-Policy: TLS `sslmode=require` oder staerker als Laufzeit-Gate.
+1. Logging-Sanitization: keine rohen Exceptions, strukturierte `error_code`-Logs.
+1. Snapshot-Input-Haertung: Allowlist-Verzeichnis, Groessenlimit, Schema-Pruefung.
+1. Erst danach: Scheduler-Automatisierung und weitere Skalierungsfeatures.
 
 ### 13.1 Review-Status (2026-08-25, aktualisiert 2026-08-31)
+
 - P1 erledigt (2026-08-31): `git ls-files`/`git log` bestaetigen, dass `terraform.tfstate`, `terraform.tfstate.backup` und `terraform.tfvars` nie in der Git-Historie waren (`.gitignore` schliesst sie seit Projektstart aus); ein Bereinigen der Historie ist damit nicht erforderlich. Remote-State-Bootstrap-Code ist vorbereitet (siehe Abschnitt 20.3); die Migration selbst (`terraform init -migrate-state`) steht als manuell freizugebender Schritt aus.
 - P1 teilweise: DB-TLS, Snapshot-Input-Haertung und produktive Secrets-Manager-Nutzung sind im Live-Lauf nachgewiesen; die Secrets-Manager-Pflicht muss noch als dauerhaftes Deploy-Gate abgesichert werden.
 - P2 erledigt (2026-08-31): Fehlerlogs sind vor der Ausgabe sanitiziert (`_safe_detail` in `runner.py`); Tests decken Connection Strings, Tokens, ARNs, Pfade und personenbezogene Daten ab (siehe Abschnitt 20.2).
@@ -323,18 +374,22 @@ Diese Reihenfolge ist verbindlich vor dem regulaeren Produktionsbetrieb und dem 
 - Datenmodell-Entscheidung: Secret- und Terraform-State-Metadaten werden nicht in den fachlichen Tabellen persistiert; technische Audits verbleiben in AWS-Diensten.
 
 ### 13.2 Security-Review-Massnahmen (2026-08-25)
+
 Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-project-security-review.md`.
 
 #### P1: Vor Production-Freigabe
+
 - Logging-Sanitization in `backend/src/ingest/runner.py`: `detail=str(exc)` entfernen, feste Fehlertaxonomie verwenden und Tests fuer Tokens, Connection Strings, ARNs, Pfade und personenbezogene Daten ergaenzen. **Erledigt 2026-08-31**, siehe Abschnitt 20.2.
 - Abnahmekriterium: Standardlogs enthalten keine rohen Exception-Texte oder sensiblen Werte; Security-Review H1 ist geschlossen. **Erfuellt.**
 
 #### P2: Vor dem regulaeren Produktionsbetrieb
+
 - Produktionskonfiguration strukturell gegen ENV-Credentials absichern; `COMUNIO_SECRET_NAME` und `COMUNIO_REQUIRE_SECRET_MODE=true` muessen als nicht umgehbares Gate gelten.
 - Container-Images mit Commit-SHA oder Release-Tag statt `latest` deployen und die ECR-Tag-Strategie auf unveraenderliche Referenzen umstellen.
 - Abnahmekriterium: ECS-Task-Definition enthaelt keine Credential-ENV-Werte und referenziert eine nachvollziehbare immutable Image-Version.
 
 #### P3: Geplante Härtung
+
 - Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben; `assign_public_ip=false` erst nach validiertem NAT-/VPC-Endpoint-Pfad aktivieren.
 - CI-Security-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
 - Abnahmekriterium: Keine offenen Critical/High Findings und reproduzierbarer Deploy-Block bei Gate-Verletzung.
@@ -342,15 +397,18 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 ## 14. Konsolidierte Trade-offs und offene Entscheidungen
 
 ### 14.1 Trade-offs
+
 - Strikte Security-Gates verlangsamen kurzfristig Deployments, reduzieren aber Produktionsrisiko.
 - Erweiterte Logging- und Audit-Anforderungen erhoehen Betriebsaufwand, verbessern Incident-Reaktion.
 - Fruehe FinOps-Gates begrenzen Experimentierfreiheit, stabilisieren jedoch Kostenpfad.
 
 ### 14.2 Offene Entscheidungen
+
 - Zielniveau fuer DB-TLS in Produktion (`require` Mindestniveau, `verify-full` Zielniveau) inkl. CA-Handling.
 - Exakter Umfang der geschuetzten Debug-Logs fuer tiefe Störungsanalyse.
 
 ### 14.3 Kosten- und Betriebs-Trade-offs
+
 - Remote S3-State mit Locking verursacht geringe laufende Kosten, reduziert aber State-Konflikte und Credential-Exposure deutlich.
 - Automatische Secret-Rotation verbessert den Sicherheitsstatus, erfordert jedoch einen getesteten Rotationshandler und einen Reconnect-Nachweis.
 - Multi-AZ, laengere Backups und private Fargate-Netzwerkpfade werden erst nach dem MVP-Reliability-Gate aktiviert, um die fruehe Betriebsphase budgetschonend zu halten.
@@ -358,24 +416,28 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 ## 15. Phase-1 Umsetzungscheckliste (konsolidiert aus 5 Agent-Beitraegen)
 
 ### 15.1 AP-1 Lastenheft-Review und Scope-Fixierung
+
 - MUST/SHOULD/NICE-TO-HAVE schriftlich festlegen.
 - Nicht-Ziele fuer Phase 1 explizit dokumentieren.
 - Messbare NFR-Definitionen fuer Phase 1 festhalten.
 - Stakeholder-Signoff fuer Scope bis Ende Woche 1.
 
 ### 15.2 AP-2 Architekturentscheidungen dokumentieren
+
 - ADR-Set fuer Kernentscheidungen anlegen (Runtime, DB-Hosting, Secrets, CI/CD, Branching).
 - Sicherheits-Baseline fuer Secrets, IAM, Netzwerk und Verschluesselung festlegen.
 - Service-Mapping fuer AWS in der Architekturdoku konkretisieren.
 - Offene Architekturentscheidungen mit Verantwortlichen und Due Date markieren.
 
 ### 15.3 AP-3 Datenmodell finalisieren
+
 - Kern-Tabellen und Beziehungen fuer Phase 1 final freigeben.
 - Idempotenz-Constraint und Index-Mindestset verbindlich machen.
 - Migrations-Strategie festlegen (Tool + Benennung + Rollback-Prinzip).
 - Data Dictionary fuer Kernfelder abschliessen.
 
 ### 15.4 AP-4 Dev-Umgebung und Delivery-Basis
+
 - Repo-Struktur fuer backend, ingest, frontend, infrastructure und docs festlegen.
 - Docker- und lokale Startkonventionen dokumentieren.
 - CI-Baseline mit Lint, Tests und Dependency-Checks aktivieren.
@@ -384,12 +446,14 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 ## 16. Phase-1 Abnahme (Ende Woche 2)
 
 ### 16.1 Muss-Kriterien
+
 - Lastenheft-Scope ist schriftlich freigegeben.
 - Architekturentscheidungen sind als ADRs dokumentiert.
 - Datenmodell fuer Phase 1 ist final und widerspruchsfrei.
 - Dev-Setup ist reproduzierbar und vom Team erfolgreich durchlaufen.
 
 ### 16.2 KPI-Kriterien
+
 - Setup-Zeit fuer neue Entwickler ist dokumentiert.
 - Kritische Blocker aus Woche 1 sind geschlossen.
 - CI-Baseline laeuft fuer Pull Requests stabil.
@@ -397,25 +461,30 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 ## 17. Phase-1 Trade-offs und offene Entscheidungen
 
 ### 17.1 Trade-offs
+
 - Dokumentations- und Entscheidungsqualitaet wird vor Feature-Tempo priorisiert.
 - Kern-Setup wird abgeschlossen, spaetere Funktionsumsetzung wird bewusst nicht vorgezogen.
 
 ### 17.2 Offene Entscheidungen
+
 - Finale Produktions-Runtime fuer Ingest.
 - Exakte Budgetgrenzen fuer Dev/Staging in der Fruehphase.
 
 ## 18. AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt)
 
 ### 18.1 Ziel
+
 Der Scheduler-Lauf soll selbststaendig erkennen, ob er erfolgreich war oder an einem Login-Problem gescheitert ist. Bei Login-Fehlern wird der Lauf automatisch erneut versucht, statt sofort als fehlgeschlagen zu enden.
 
 ### 18.2 Umsetzung
+
 - `backend/src/ingest/runner.py`: neue Funktion `_login_with_retry` fuehrt bis zu `COMUNIO_LOGIN_RETRY_ATTEMPTS` (Default 3) Login-Versuche im Abstand von `COMUNIO_LOGIN_RETRY_WAIT_SECONDS` (Default 300 Sekunden, 5 Minuten) durch.
 - `backend/src/config.py`: neue Settings-Felder `login_retry_attempts` und `login_retry_wait_seconds` mit Validierung (positive Ganzzahlen).
 - Nach erschoepften Versuchen wird der Lauf mit `run_failed`, `stage=login` beendet; der Prozess terminiert mit Exit-Code 1, genau wie ein erfolgreicher Lauf mit Exit-Code 0 den Prozess regulaer beendet. Da der Ingest-Task ein einmaliger ECS-Fargate-Task ist (kein Dauerservice), stoppt ECS den Container in beiden Faellen identisch; es ist kein zusaetzlicher Shutdown-Mechanismus noetig.
 - `infra/aws/terraform/main.tf`: neue Terraform-Variablen `login_retry_attempts` und `login_retry_wait_seconds` werden als Container-ENV durchgereicht. Ein neuer CloudWatch Logs Metric Filter (`login-retries-exhausted`) auf das Muster `event=run_failed stage=login` speist einen CloudWatch Alarm; optionale Benachrichtigung ueber `alert_sns_topic_arn`.
 
 ### 18.3 Tests
+
 - `backend/tests/test_scheduled_runner.py` deckt ab:
   - Erfolgreicher Login nach transienten Fehlern (`login_recovered`).
   - Alle Versuche fehlgeschlagen (`login_attempt_failed` dreimal, korrekte Wartezeiten).
@@ -423,38 +492,44 @@ Der Scheduler-Lauf soll selbststaendig erkennen, ob er erfolgreich war oder an e
 - `terraform validate` und `terraform fmt -check` sind fuer die Infrastrukturaenderung gruen.
 
 ### 18.4 Priorisierung
+
 - P1: Login-Retry-Logik im Runner (dieser Abschnitt, umgesetzt).
 - P2: CloudWatch-Alarm auf erschoepfte Login-Retries (umgesetzt, Benachrichtigung optional).
 - P3: Verbindliche SNS-Anbindung fuer den Alarm, sobald das Betriebsteam einen Ziel-Topic bestaetigt.
 
 ### 18.5 Trade-offs
+
 - Ein Lauf mit drei fehlgeschlagenen Login-Versuchen kann bis zu 10 Minuten laenger laufen (zwei Wartezeiten je 5 Minuten). Dies wird akzeptiert, da Login-Probleme typischerweise transient sind und die Snapshot-Verarbeitung ohnehin erst nach erfolgreichem Login beginnt.
 - Bewusst keine Step-Functions-Orchestrierung: Die intra-Prozess-Loesung vermeidet zusaetzliche AWS-Ressourcen und laufende Kosten und passt sich in den bestehenden Retry-Stil (Snapshot-Backoff) ein.
 
 ## 19. AP-9.1 Stabilitaetsnachweis: drei aufeinanderfolgende Scheduler-Fenster (erledigt, 2026-08-31)
 
 ### 19.1 Pruefergebnis
+
 Die Verifikation ueber `aws events describe-rule`, `aws ecs list-tasks`/`describe-tasks` und `aws logs tail /ecs/comunio-prod-ingest` (Region `eu-central-1`) am 2026-08-31 bestaetigt das Akzeptanzkriterium aus Abschnitt 3, Punkt 4 sowie AP-9.1 (Abschnitt 12.2) und die AP-9-Acceptance-Kriterien in `backend/OPERABILITY-AP9.md`. Die EventBridge-Rule `comunio-prod-snapshot-schedule` ist `ENABLED` mit `cron(0 6 * * ? *)` (06:00 UTC).
 
 ### 19.2 Chronologische Scheduler-Runs (CloudWatch, `/ecs/comunio-prod-ingest`)
-| Datum (UTC) | Ereignis | run_id | Ergebnis | market_values_count |
-|---|---|---|---|---|
-| 2026-08-25 19:39 | `run_type=scheduled` | 10 | `run_success` | 501 |
-| 2026-08-26 06:00 | `run_type=scheduled` | - | `run_failed stage=login` (Comunio "Plus/Pro"-Sperre, vor Deployment der Login-Retry-Logik) | - |
-| 2026-08-26 13:05 | `run_type=scheduled` | 11 | `run_success` | 601 |
-| 2026-08-27 06:00 | `run_type=scheduled` | 13 | `run_success` (nach `login_attempt_failed` + `login_recovered` bei Versuch 2) | 702 |
-| 2026-08-28 06:00 | `run_type=scheduled` | 14 | `run_success` (nach `login_recovered` bei Versuch 2) | 802 |
-| 2026-08-29 06:00 | `run_type=scheduled` | 15 | `run_success` (Login sofort erfolgreich) | 902 |
-| 2026-08-30 06:00 | `run_type=scheduled` | 16 | `run_success` (nach `login_recovered` bei Versuch 2) | 1002 |
-| 2026-08-31 06:00 | `run_type=scheduled` | 17 | `run_success` (nach `login_recovered` bei Versuch 2) | 1102 |
+
+| Datum (UTC)      | Ereignis             | run_id | Ergebnis                                                                                   | market_values_count |
+| ---------------- | -------------------- | ------ | ------------------------------------------------------------------------------------------ | ------------------- |
+| 2026-08-25 19:39 | `run_type=scheduled` | 10     | `run_success`                                                                              | 501                 |
+| 2026-08-26 06:00 | `run_type=scheduled` | -      | `run_failed stage=login` (Comunio "Plus/Pro"-Sperre, vor Deployment der Login-Retry-Logik) | -                   |
+| 2026-08-26 13:05 | `run_type=scheduled` | 11     | `run_success`                                                                              | 601                 |
+| 2026-08-27 06:00 | `run_type=scheduled` | 13     | `run_success` (nach `login_attempt_failed` + `login_recovered` bei Versuch 2)              | 702                 |
+| 2026-08-28 06:00 | `run_type=scheduled` | 14     | `run_success` (nach `login_recovered` bei Versuch 2)                                       | 802                 |
+| 2026-08-29 06:00 | `run_type=scheduled` | 15     | `run_success` (Login sofort erfolgreich)                                                   | 902                 |
+| 2026-08-30 06:00 | `run_type=scheduled` | 16     | `run_success` (nach `login_recovered` bei Versuch 2)                                       | 1002                |
+| 2026-08-31 06:00 | `run_type=scheduled` | 17     | `run_success` (nach `login_recovered` bei Versuch 2)                                       | 1102                |
 
 ### 19.3 Bewertung
+
 - Fuenf aufeinanderfolgende taegliche Zeitfenster (2026-08-27 bis 2026-08-31) erfuellen `run_type=scheduled` mit `run_success` und uebertreffen damit die geforderten drei aufeinanderfolgenden Fenster.
 - `market_values_count` steigt exakt um 100 pro Tag (702 -> 802 -> 902 -> 1002 -> 1102), was zur erwarteten Snapshot-Groesse passt; es liegen keine Duplikat-, Unique-Constraint- oder IntegrityError-Meldungen in den CloudWatch-Logs vor.
 - Der einzelne fehlgeschlagene Lauf am 2026-08-26 06:00 lag vor der Aktivierung von AP-9.2 (Login-Retry, deployed am 2026-08-26) und ist damit kein Verstoss gegen den nachtraeglich gehaerteten Betrieb; alle Laeufe ab 2026-08-27 nutzen die Retry-Logik und enden erfolgreich.
 - Damit gelten Abschnitt 3 Punkt 4, AP-9.1 (Abschnitt 12.2) sowie das entsprechende Akzeptanzkriterium in `backend/OPERABILITY-AP9.md` als erfuellt.
 
 ### 19.4 Naechster Schritt
+
 - AP-10-Anwendungsnachweise sind mit `v0.4.4` abgeschlossen; AP-11-DEV ist Bestandteil von `v0.5.0`. Als naechstes ist gemaess Abschnitt 9 das oeffentliche AWS-MVP-Deployment mit Read-only-DB-User und Vercel-CORS nachzuweisen.
 
 ## 20. AP-10a: Konsolidierte Agent-Beiträge und Hardening-Roadmap (2026-08-31)
@@ -503,6 +578,7 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 ### 20.4 Project Architecture Planner (Cost / Scalability)
 
 **Cost-Analyse AP-10a:**
+
 - S3+DynamoDB remote state: ~$0.01–0.05/Monat (praktisch $0).
 - Logging-Sanitization: $0 (Code-only).
 - RDS Multi-AZ heute: +~$50–150/Monat (abgelehnt, deferred).
@@ -511,6 +587,7 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 **Recommendation:** S3+DynamoDB ist kosteffizient, bleibt in AWS-Ökosystem und vermeidet Vendor Lock-in zu Terraform Cloud. Single-AZ RDS bleibt auf P3 (keine Kosten-Bedrohung heute).
 
 **Skalierungs-Roadmap nach AP-10a:**
+
 - **Phase A (jetzt):** Single-AZ Ingest, single Fargate task daily, Local/S3 state, no API yet.
 - **Phase B (Q4):** API Layer (FastAPI) mit read-only Endpoints, Query Caching, rate-limiting.
 - **Phase C (Q1 2027):** Multi-AZ Ingest, RDS replicas, CDN für Frontend, Event-driven backpressure (SQS DLQ → Lambda retry).
@@ -518,43 +595,49 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 ### 20.5 Software Engineer Agent v1 (Execution Summary)
 
 **Codierung abgeschlossen:**
+
 1. ✅ `backend/src/ingest/runner.py`: `_safe_detail()` Funktion + 3 Call-site Patches.
-2. ✅ `backend/tests/test_scheduled_runner.py`: Sanitization-Tests (sensible Substrings abgedeckt).
-3. ✅ `infra/aws/terraform/state_backend.tf`: S3-Bucket (versioned, AES256, public-access-blocked, 90d lifecycle) + DynamoDB lock table.
-4. ✅ `infra/aws/terraform/backend.tf`: Auskommentierter `backend "s3"` Block (Runbook-triggert Aktivierung).
-5. ✅ `architecture.md` §5.1/§5.2: Logging-Gate dokumentiert, State-Exposure-Analyse eingefügt.
-6. ✅ `infra/aws/README.md`: Remote-State-Migrationsprozess dokumentiert.
-7. ✅ `terraform validate`: Erfolgreich, keine Fehler.
+1. ✅ `backend/tests/test_scheduled_runner.py`: Sanitization-Tests (sensible Substrings abgedeckt).
+1. ✅ `infra/aws/terraform/state_backend.tf`: S3-Bucket (versioned, AES256, public-access-blocked, 90d lifecycle) + DynamoDB lock table.
+1. ✅ `infra/aws/terraform/backend.tf`: Auskommentierter `backend "s3"` Block (Runbook-triggert Aktivierung).
+1. ✅ `architecture.md` §5.1/§5.2: Logging-Gate dokumentiert, State-Exposure-Analyse eingefügt.
+1. ✅ `infra/aws/README.md`: Remote-State-Migrationsprozess dokumentiert.
+1. ✅ `terraform validate`: Erfolgreich, keine Fehler.
 
 **Validation:**
+
 - `pytest backend/tests/ -q` → 13 passed.
 - `terraform validate` → Success.
 
 **Nächste Schritte (manuelle Freigabe erforderlich):**
+
 - `terraform init -migrate-state` (production state-Speicherort ändert sich → erfordert bewusste Freigabe vor Ausführung, nicht automatisiert).
 
 ### 20.6 Offene Entscheidungen und Blocker
 
-| Entscheidung | Status | Aktion | Deadline |
-|---|---|---|---|
-| Remote Terraform-State aktivieren (`terraform init -migrate-state`) | **Cooked, awaiting approval** | Manuelle Freigabe vor Execution; siehe Runbook in `infra/aws/README.md` + `state_backend.tf` | Nach nächster Team-Review |
-| RDS-Master-Password rotieren | **Deferred, documented** | Runbook vorbereitet; Rotation opportunistisch oder beim Team-Onboarding | Nach State-Backend-Aktivierung |
-| RDS Multi-AZ aktivieren | **Deferred (cost mandate)** | Explizit auf Q1 2027 verschoben (Infrastruktur-Budget-Constraint) | Q1 2027 |
-| Secrets-Manager-Pflicht in Prod durchsetzen | **P1 pending** | Terraform `precondition` hinzufügen auf ECS-Task-Definition, das `require_secret_mode=true` erzwingt | Vor nächstem Prod-Deploy |
-| Dedicated terraform-deploy IAM-Role | **P2 pending** | Design vorbereitet, Aktivierung bei Team-Onboarding | Q4 2026 |
+| Entscheidung                                                        | Status                        | Aktion                                                                                               | Deadline                       |
+| ------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Remote Terraform-State aktivieren (`terraform init -migrate-state`) | **Cooked, awaiting approval** | Manuelle Freigabe vor Execution; siehe Runbook in `infra/aws/README.md` + `state_backend.tf`         | Nach nächster Team-Review      |
+| RDS-Master-Password rotieren                                        | **Deferred, documented**      | Runbook vorbereitet; Rotation opportunistisch oder beim Team-Onboarding                              | Nach State-Backend-Aktivierung |
+| RDS Multi-AZ aktivieren                                             | **Deferred (cost mandate)**   | Explizit auf Q1 2027 verschoben (Infrastruktur-Budget-Constraint)                                    | Q1 2027                        |
+| Secrets-Manager-Pflicht in Prod durchsetzen                         | **P1 pending**                | Terraform `precondition` hinzufügen auf ECS-Task-Definition, das `require_secret_mode=true` erzwingt | Vor nächstem Prod-Deploy       |
+| Dedicated terraform-deploy IAM-Role                                 | **P2 pending**                | Design vorbereitet, Aktivierung bei Team-Onboarding                                                  | Q4 2026                        |
 
 ### 20.7 Zusammenfassung: AP-10a abgeschlossen, nächste Phase vorbereitet
 
 **Erledigt:**
+
 - ✅ Log-Sanitization (P1): Rohe Exception-Details entfernt, Tests bestanden.
 - ✅ State-Exposure-Analyse (P1): Kein Git-Vektor, Bootstrap-Code ready, Aktivierung deferred.
 - ✅ Security-Gates S1–S4 dokumentiert und teilweise durchgesetzt (S2/S4 live, S1/S3 in Terraform pending).
 
 **Noch zu tun (P1-Gated vor Production):**
+
 - Remote State aktivieren (manuelle Freigabe).
 - Secrets-Manager-Pflicht in Terraform durchsetzen.
 
 **P2–P3 (nach AP-10a, vor API-Launch):**
+
 - AP-10b: CI-Gates (Tests, Terraform fmt/validate, Secret-Scanning).
 - AP-10c: Container-Image-Tagging (immutable ref statt `latest`).
 - AP-11: API-Grundlage (FastAPI, Endpoints für Spieler/Teams/Historie).
@@ -564,12 +647,14 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 **Erfolgreiche Ausführung aller Migrationsschritte (2026-09-01):**
 
 1. **Bootstrap-Ressourcen erstellt** ✅
+
    - AWS S3-Bucket `comunio-prod-tfstate` mit Versioning, AES256-Encryption, Public-Access-Block und 90-Tage-Lifecycle für noncurrent versions
    - AWS DynamoDB-Tabelle `comunio-prod-tfstate-lock` mit PAY_PER_REQUEST-Billing
    - Plan: 6 to add, 0 to change, 0 to destroy
    - Termin: 2026-09-01 (Schritt 1)
 
-2. **Backend-Konfiguration aktiviert** ✅
+1. **Backend-Konfiguration aktiviert** ✅
+
    - `infra/aws/terraform/backend.tf`: Terraform-Block aus Kommentaren entfernt
    - Datei ist konfiguriert mit:
      - `bucket = "comunio-prod-tfstate"`
@@ -579,20 +664,23 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
      - `encrypt = true`
    - Termin: 2026-09-01 (Schritt 2)
 
-3. **State Migration durchgeführt** ✅
+1. **State Migration durchgeführt** ✅
+
    - `terraform init -migrate-state` bestätigt mit `yes`
    - Lokales `terraform.tfstate` wurde zu S3-Backend migriert
    - S3-State-Datei: `s3://comunio-prod-tfstate/comunio-prod/terraform.tfstate` (97,538 bytes)
    - DynamoDB Lock-Tabelle Status: `ACTIVE`
    - Termin: 2026-09-01 (Schritt 3)
 
-4. **Plan-Verifikation** ✅
+1. **Plan-Verifikation** ✅
+
    - `terraform plan` bestätigt: No changes needed
    - Infrastruktur entspricht Konfiguration
    - Keine unerwarteten Diffs
    - Termin: 2026-09-01 (Schritt 4)
 
-5. **Git-Sicherung** ✅
+1. **Git-Sicherung** ✅
+
    - `.gitignore` erweitert um Terraform-Richtlinien:
      - `terraform.tfstate*` (alle State-Dateien ausgeschlossen)
      - `.terraform/` (lokale Provider-Cache ausgeschlossen)
@@ -602,6 +690,7 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
    - Termin: 2026-09-01 (Schritt 5)
 
 **Verifikation abgeschlossen (2026-09-01):**
+
 - ✅ Lokale `terraform.tfstate` existiert noch (Backup, nicht mehr verwendete)
 - ✅ Remote S3-State ist abrufbar und vollständig
 - ✅ DynamoDB Lock-Tabelle ist aktiv und bereit
@@ -610,9 +699,8 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 - ✅ Terraform-Validierung erfolgreich
 
 **Production-Readiness:**
+
 - Terraform State ist nun durable (S3 mit Versioning), distributed (shareable Speicher), und gesichert mit Locking (DynamoDB) und Encryption
 - Kein State-Speicherort-Risiko für Team-Onboarding oder CI/CD-Automation
 - RDS-Credentials in lokalem State sind nicht mehr ein Hauptproblem (State ist aus Git und auf sicherem Cloud-Speicher)
 - Rotation der RDS-Credentials bleibt auf P2 (kein Git-Expositionsvektor, opportunistische Durchführung nach State-Stabilisierung)
-
-

@@ -38,8 +38,6 @@ Registrierung und Login
 
 Rollen- und Rechteverwaltung
 
-
-
 6. Nicht-funktionale Anforderungen
 
 6.1 Performance
@@ -184,11 +182,7 @@ Deployment: 1 Woche
 
 12. Budget
 
-
-
 Infrastrukturkosten - so niedrig wie möglich
-
-
 
 13. Abnahmekriterien
 

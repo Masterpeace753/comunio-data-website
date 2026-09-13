@@ -2,11 +2,16 @@
 
 Release-Version: v0.5.0 (AP-11 Read-only FastAPI API, Vercel CORS and CI)
 
+## Repository-Beschreibung
+
+Dieses Repository enthält die vollständige Comunio-Datenplattform: einen Python-Ingest für tägliche Snapshots, PostgreSQL-Migrationen und Historisierung, eine read-only FastAPI für das Vercel-Frontend, AWS-ECS/Fargate- und Terraform-Infrastruktur sowie Tests, CI/CD-, Security- und Betriebsdokumentation.
+
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
 
 ## Projektziel
 
 Das Projekt liefert:
+
 - stabilen Datenabruf mit ComunioPy
 - historisierte Speicherung in PostgreSQL
 - Backend-API fuer Auswertung und Bereitstellung
@@ -18,6 +23,7 @@ Das Projekt liefert:
 Phase 1 ist umgesetzt (Analyse und Setup).
 
 Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
+
 - AP-5: ComunioPy Login-Integration
 - AP-6: Datenbankschema und Migrationen
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
@@ -48,15 +54,17 @@ Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2
 ## Backend Quick Start
 
 Voraussetzungen:
+
 - Python 3.11+
 - PostgreSQL erreichbar
 
 Schritte:
+
 1. In den Backend-Ordner wechseln.
-2. Abhaengigkeiten installieren.
-3. Umgebungswerte aus [backend/.env.example](backend/.env.example) setzen.
-4. Migrationen ausfuehren.
-5. Login-Check oder Snapshot-Run starten.
+1. Abhaengigkeiten installieren.
+1. Umgebungswerte aus [backend/.env.example](backend/.env.example) setzen.
+1. Migrationen ausfuehren.
+1. Login-Check oder Snapshot-Run starten.
 
 Beispielbefehle (PowerShell):
 
@@ -69,6 +77,7 @@ python -m src.ingest.runner --run-type manual --mode snapshot
 ```
 
 Hinweis fuer lokale, deterministische Tests:
+
 - Mit COMUNIO_SNAPSHOT_FILE kann statt Live-API eine Fixture-Datei genutzt werden.
 - Beispiel: [backend/tests/sample_snapshot.json](backend/tests/sample_snapshot.json)
 
@@ -81,6 +90,7 @@ Hinweis fuer lokale, deterministische Tests:
 - Security-Review: [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
 
 Verbindliche Gates vor dem naechsten Ausbau:
+
 - G1 Login-Bootstrap
 - G2 Migrations-Idempotenz
 - G3 Schema-Integritaet
@@ -90,12 +100,14 @@ Verbindliche Gates vor dem naechsten Ausbau:
 Aktuelle Datei: [backend/requirements.txt](backend/requirements.txt)
 
 Einschaetzung Stand heute:
+
 - boto3: technisch aktuell einsetzbar
 - psycopg2-binary: technisch aktuell einsetzbar
 - python-dotenv: technisch aktuell einsetzbar
 - requests: wird vom eigenen Comunio-REST-Adapter verwendet
 
 Hinweis zum Comunio-Adapter:
+
 - Das externe Legacy-Paket `comuniopy` ist keine Projektabhaengigkeit und wird nicht importiert.
 - `backend/src/ingest/comuniopy_client.py` enthaelt stattdessen den eigenen `ComunioPyClient` fuer Login, Snapshot-Abruf und Normalisierung.
 - Der produktive AWS-Live-Snapshot wurde mit diesem Adapter erfolgreich ausgefuehrt.
@@ -103,8 +115,8 @@ Hinweis zum Comunio-Adapter:
 ## Naechste Schritte
 
 1. Blockierendes Security-Finding H1 schliessen: rohe Exception-Details aus Logs entfernen und Sanitization-Tests ergaenzen.
-2. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie ausserhalb des geschuetzten AWS-/CI-Kontexts exponiert waren.
-3. Produktions-Secret-Policy strukturell erzwingen und auf immutable Container-Image-Referenzen umstellen.
-4. Nach dem Drei-Lauf-Nachweis AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 FastAPI-Endpunkte umsetzen.
+1. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie ausserhalb des geschuetzten AWS-/CI-Kontexts exponiert waren.
+1. Produktions-Secret-Policy strukturell erzwingen und auf immutable Container-Image-Referenzen umstellen.
+1. Nach dem Drei-Lauf-Nachweis AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 FastAPI-Endpunkte umsetzen.
 
 Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).

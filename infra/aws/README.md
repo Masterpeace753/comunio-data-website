@@ -37,10 +37,10 @@ This repository now includes a lean AWS baseline for the backend ingest job:
 The Terraform now supports two operating modes:
 
 1. Existing infrastructure mode
-Provide existing VPC, subnets, security groups, and Secrets Manager ARNs via variables.
+   Provide existing VPC, subnets, security groups, and Secrets Manager ARNs via variables.
 
-2. Managed MVP mode
-Set `create_network=true` and `create_database=true` to let Terraform create the VPC, subnets, ECS security group, PostgreSQL instance, and a `DATABASE_URL` secret for you.
+1. Managed MVP mode
+   Set `create_network=true` and `create_database=true` to let Terraform create the VPC, subnets, ECS security group, PostgreSQL instance, and a `DATABASE_URL` secret for you.
 
 For a first AWS validation without live Comunio credentials, set `comunio_snapshot_file=/app/tests/sample_snapshot.json`. In that mode the ECS task uses the bundled fixture snapshot instead of live login.
 
@@ -49,14 +49,14 @@ For a first AWS validation without live Comunio credentials, set `comunio_snapsh
 Create these secrets before applying Terraform:
 
 1. `database_url_secret_arn`
-Plain string secret containing the full PostgreSQL connection string, for example:
+   Plain string secret containing the full PostgreSQL connection string, for example:
 
 ```text
 postgresql://user:password@db-host:5432/comunio?sslmode=require
 ```
 
 1. `comunio_credentials_secret_arn`
-JSON secret consumed by the current backend code:
+   JSON secret consumed by the current backend code:
 
 ```json
 {
@@ -68,9 +68,9 @@ JSON secret consumed by the current backend code:
 ## Deployment flow
 
 1. Build and push the image.
-2. Apply Terraform.
-3. Run migrations once with an ECS command override.
-4. Enable the schedule for recurring snapshots.
+1. Apply Terraform.
+1. Run migrations once with an ECS command override.
+1. Enable the schedule for recurring snapshots.
 
 When `create_database=true`, Terraform creates the database URL secret automatically and you do not need to provide `database_url_secret_arn`.
 When `comunio_snapshot_file` is set, you do not need `comunio_credentials_secret_arn` for the first infrastructure validation.

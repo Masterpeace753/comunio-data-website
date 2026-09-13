@@ -13,15 +13,15 @@ AP-9 runs the existing ECS Fargate snapshot task once per day through an EventBr
 ## Activation and verification
 
 1. Run `terraform validate` and `terraform plan` in `infra/aws/terraform`.
-2. Confirm `enable_schedule=true` only after the live snapshot and security gates are green.
-3. Apply Terraform and record the EventBridge rule name and scheduler DLQ URL from Terraform outputs.
-4. Verify the rule:
+1. Confirm `enable_schedule=true` only after the live snapshot and security gates are green.
+1. Apply Terraform and record the EventBridge rule name and scheduler DLQ URL from Terraform outputs.
+1. Verify the rule:
 
 ```powershell
 aws events describe-rule --name comunio-prod-snapshot-schedule --region eu-central-1
 ```
 
-5. After the first scheduled window, verify the task and logs:
+1. After the first scheduled window, verify the task and logs:
 
 ```powershell
 aws ecs list-tasks --cluster comunio-prod-cluster --desired-status STOPPED --region eu-central-1
@@ -62,16 +62,16 @@ aws sqs get-queue-attributes --queue-url $dlqUrl --attribute-names ApproximateNu
 ## Failure response
 
 1. Check the ECS task exit code and the sanitized `error_code` in CloudWatch.
-2. If the failure is `stage=login`, confirm whether the login retries (3 attempts, 5 minutes apart) already ran; the CloudWatch alarm `comunio-prod-login-retries-exhausted` fires only after all attempts are exhausted.
-3. Check database availability, Secrets Manager access, image availability, and network reachability.
-4. Do not paste SecretString values, credentials, connection strings, or raw exception text into incident records.
-5. Re-run the task manually only after the root cause is understood:
+1. If the failure is `stage=login`, confirm whether the login retries (3 attempts, 5 minutes apart) already ran; the CloudWatch alarm `comunio-prod-login-retries-exhausted` fires only after all attempts are exhausted.
+1. Check database availability, Secrets Manager access, image availability, and network reachability.
+1. Do not paste SecretString values, credentials, connection strings, or raw exception text into incident records.
+1. Re-run the task manually only after the root cause is understood:
 
 ```powershell
 ./scripts/aws/run-snapshot.ps1 -AssignPublicIp
 ```
 
-6. Keep the schedule disabled while a systemic failure is being repaired. Re-enable it through Terraform after validation.
+1. Keep the schedule disabled while a systemic failure is being repaired. Re-enable it through Terraform after validation.
 
 ## Rollback
 

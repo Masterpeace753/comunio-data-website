@@ -1,19 +1,24 @@
 # Code Review: Backend Ingest Pipeline (AP-5/AP-7)
+
 **Ready for Production**: Conditional Yes
 **Critical Issues**: 0
 
 ## Scope
+
 Reviewed files:
+
 - backend/src/database/connection.py
 - backend/src/ingest/runner.py
 - backend/src/ingest/comuniopy_client.py
 
 ## Priority 1 (Must Fix) ⛔
+
 No open P1 findings after remediation.
 
 ## Priority 2 (Should Fix)
 
 ### 1) Medium - Raw exception details in operational logs
+
 - Severity: Medium
 - Category: OWASP A09 - Security Logging and Monitoring Failures / Information Disclosure
 - Status: Mitigated
@@ -29,6 +34,7 @@ No open P1 findings after remediation.
   - Add tests asserting that failed login/snapshot paths do not emit raw provider exception text.
 
 ### 2) Medium - Snapshot file input trusts arbitrary local path without hardening
+
 - Severity: Medium
 - Category: Zero Trust - Input Validation / Local File Access
 - Status: Mitigated
@@ -46,6 +52,7 @@ No open P1 findings after remediation.
 ## Recommended Changes
 
 ### Example: enforce SSL mode for DB connections
+
 ```python
 from urllib.parse import parse_qs, urlparse
 
@@ -63,6 +70,7 @@ def connect(database_url: str):
 ```
 
 ### Example: sanitize logging output
+
 ```python
 # Instead of printing full exception text:
 # print(f"[INGEST] status=failed reason={exc}")
@@ -71,22 +79,26 @@ print("[INGEST] status=failed reason=login_failed")
 ```
 
 ## Remediation Status
+
 - DB TLS policy enforced in runtime (`sslmode=require` or stronger required).
 - Secrets policy enforcement added (`COMUNIO_REQUIRE_SECRET_MODE` with prod default).
 - Snapshot file hardening added (allowlist directory + max size + schema check).
 - Automated policy tests added in backend/tests/test_security_policies.py.
 
 ## Risk Summary
+
 - Critical: 0
 - High: 1
 - Medium: 2
 - Low: 0
 
 ## Decision
+
 - Production Ready: Conditional Yes
 - Blocking Issues:
   - None on code level; production rollout still requires environment-level TLS/CA and Secrets Manager configuration.
 
 ## Residual Risks / Testing Gaps
+
 - No dedicated automated security tests were found for transport security policy, log sanitization, or file-path hardening.
 - Dependency-level security posture (boto3/psycopg2 and the other packages in `backend/requirements.txt`) was not assessed in this review.
