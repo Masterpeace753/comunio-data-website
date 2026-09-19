@@ -7,9 +7,9 @@
 
 terraform {
   backend "s3" {
-    bucket         = "comunio-prod-tfstate"
-    key            = "comunio-prod/terraform.tfstate"
-    region         = "eu-central-1"
+    bucket       = "comunio-prod-tfstate"
+    key          = "comunio-prod/terraform.tfstate"
+    region       = "eu-central-1"
     use_lockfile = true
     encrypt      = true
   }
