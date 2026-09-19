@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import psycopg2
@@ -17,7 +18,17 @@ def postgres_database_url() -> str:
 
 @pytest.fixture(scope="session")
 def migrated_postgres(postgres_database_url: str):
-    connection = psycopg2.connect(postgres_database_url)
+    last_error: psycopg2.OperationalError | None = None
+    for _ in range(10):
+        try:
+            connection = psycopg2.connect(postgres_database_url)
+            break
+        except psycopg2.OperationalError as error:
+            last_error = error
+            time.sleep(1)
+    else:
+        raise last_error or RuntimeError("PostgreSQL connection failed")
+
     connection.autocommit = True
     migrations_dir = Path(__file__).resolve().parents[1] / "migrations"
     with connection.cursor() as cursor:
