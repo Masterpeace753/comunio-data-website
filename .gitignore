@@ -66,6 +66,7 @@ docker-compose.override.yml
 # Database and local data dumps
 exports/
 *.sql
+!backend/migrations/*.sql
 *.dump
 *.sqlite
 *.sqlite3
