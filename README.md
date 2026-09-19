@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.5.1 (AP-12/AP-13, API Contract and low-cost Observability)
+Release-Version: v0.5.2 (Terraform S3 lockfile deprecation fix)
 Dokumentationsstand: 2026-09-19
 
 ## Repository-Beschreibung

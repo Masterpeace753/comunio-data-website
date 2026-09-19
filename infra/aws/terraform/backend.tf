@@ -1,15 +1,16 @@
-# AP-10a: remote Terraform state backend (S3 + DynamoDB lock table).
+# AP-10a: remote Terraform state backend (S3 with native lockfile).
 #
 # This block is enabled after bootstrap resources (state_backend.tf) have been
-# applied, enabling state locking and versioning. Activation via terraform init
-# -migrate-state moves the local state to S3 (one-time migration).
+# applied, enabling state locking and versioning. The backend uses Terraform's
+# native S3 lockfile; the existing DynamoDB table is retained as a legacy
+# managed resource and is not referenced by the active backend.
 
 terraform {
   backend "s3" {
     bucket         = "comunio-prod-tfstate"
     key            = "comunio-prod/terraform.tfstate"
     region         = "eu-central-1"
-    dynamodb_table = "comunio-prod-tfstate-lock"
-    encrypt        = true
+    use_lockfile = true
+    encrypt      = true
   }
 }

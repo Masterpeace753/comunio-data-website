@@ -1,6 +1,6 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.5.1
+Infrastructure-Version: v0.5.2
 Dokumentationsstand: 2026-09-19
 
 ## Public API MVP
@@ -98,7 +98,7 @@ When `comunio_snapshot_file` is set, you do not need `comunio_credentials_secret
 
 ## Remote Terraform state (AP-10a)
 
-Local state (`terraform.tfstate`) is git-ignored but has no locking, durability, or shared access. `state_backend.tf` defines bootstrap resources (versioned/encrypted S3 bucket + DynamoDB lock table); `backend.tf` holds the commented-out `backend "s3"` block. This migration changes where the live production state lives, so it must be run deliberately, not as part of routine `terraform apply`:
+Local state (`terraform.tfstate`) is git-ignored but has no locking, durability, or shared access. The active backend uses a versioned/encrypted S3 bucket with Terraform's native S3 lockfile (`use_lockfile = true`). The existing DynamoDB table is retained as a legacy managed resource and is not used by the active backend. Backend activation changes where live production state lives, so it must be run deliberately, not as part of routine `terraform apply`:
 
 ```powershell
 aws configure export-credentials --format powershell | Invoke-Expression
@@ -109,10 +109,10 @@ terraform apply `
   -target=aws_s3_bucket_server_side_encryption_configuration.tfstate `
   -target=aws_s3_bucket_public_access_block.tfstate `
   -target=aws_s3_bucket_lifecycle_configuration.tfstate `
-  -target=aws_dynamodb_table.tfstate_lock
 
-# then uncomment the backend "s3" block in backend.tf
-terraform init -migrate-state   # confirm "yes" to copy existing local state
+# then enable/reconfigure the backend "s3" block in backend.tf
+terraform init -migrate-state   # only if the state is still local
+terraform init -reconfigure     # use when the state is already in S3
 terraform plan                  # verify no unexpected diff
 ```
 
