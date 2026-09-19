@@ -3,9 +3,23 @@
 Infrastructure-Version: v0.5.4
 Dokumentationsstand: 2026-09-19
 
-## Public API MVP
+## API deployment status
 
-The read-only FastAPI service is deployed as ECS service `comunio-prod-api` behind the public ALB:
+The read-only FastAPI service is currently disabled because no frontend is deployed.
+With `api_enabled = false`, Terraform removes the API ECS service, ALB, target group,
+API security groups, API bootstrap task, and API CloudWatch alarms. The ingest
+scheduler, database, and snapshot pipeline remain active.
+
+Re-enable the API only when the frontend integration starts:
+
+```hcl
+api_enabled = true
+```
+
+At that point, apply Terraform first and then implement AP-13.a server-side proxy
+authentication before exposing API data to the browser.
+
+The last deployed API endpoint was:
 
 ```text
 http://comunio-prod-api-1645234553.eu-central-1.elb.amazonaws.com
@@ -17,7 +31,7 @@ Verified endpoints:
 - `/health/ready` -> HTTP 200 with database connectivity
 - `/api/v1/players?limit=1` -> HTTP 200
 
-The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
+The former MVP used `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
 HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
 
@@ -28,11 +42,9 @@ waiting indefinitely.
 
 ### Emergency private switch
 
-Because no frontend is currently deployed, the Terraform configuration now prepares
-the API ALB as an internal load balancer (`internal=true`). This change is not active
-in AWS until the pending `terraform apply` succeeds. The ingest scheduler and database
-are unaffected; ECS API tasks keep their current egress configuration until the later
-private-subnet/NAT or VPC-endpoint hardening step.
+The API was disabled as the immediate no-frontend measure. When it is re-enabled,
+the Terraform configuration creates the API ALB as an internal load balancer
+(`internal=true`).
 
 ## API database access
 

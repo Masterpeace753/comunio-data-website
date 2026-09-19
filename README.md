@@ -30,13 +30,13 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die read-only FastAPI laeuft als ECS-Service hinter einem oeffentlichen Application Load Balancer; `/health/live`, `/health/ready` und ein Spieler-Endpunkt sind verifiziert.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die read-only FastAPI ist aktuell deaktiviert, solange kein Frontend vorhanden ist; Ingest-Scheduler, Datenbank und Snapshot-Pipeline bleiben aktiv.
 
 Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). AP-11 ist als kostenorientiertes HTTP-MVP verifiziert. AP-12 ist als read-only-Delta-Projektion umgesetzt. AP-13 ist mit PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, Benchmark-Skript und nativen ALB-CloudWatch-Alarmen umgesetzt.
 
-Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der API-MVP ist oeffentlich ueber HTTP erreichbar und verwendet einen separaten Read-only-DB-User/Secret sowie Vercel-CORS. HTTPS/ACM, WAF und private API-Subnets bleiben bewusst nachgelagerte Haertung.
+Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Die API ist aktuell abgeschaltet; vor der Reaktivierung mit dem Frontend muessen AP-13.a-Proxy-Authentifizierung, HTTPS/ACM und der interne ALB beruecksichtigt werden.
 
-Als Notfallmassnahme fuer die Zeit ohne Frontend ist der Terraform-Schalter fuer einen internen API-ALB vorbereitet. Der private Zustand wird erst mit dem ausstehenden `terraform apply` aktiv; bis dahin bleibt der zuletzt ausgerollte oeffentliche API-MVP unveraendert.
+Als Notfallmassnahme fuer die Zeit ohne Frontend wird die API mit `api_enabled = false` betrieben. Zur spaeteren Reaktivierung den Schalter setzen, Terraform anwenden und danach AP-13.a umsetzen.
 
 ## Architektur und Planung
 
