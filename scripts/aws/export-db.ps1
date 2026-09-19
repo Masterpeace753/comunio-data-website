@@ -1,7 +1,7 @@
 param(
     [string]$TerraformPath = "infra/aws/terraform",
     [string]$OutputDir = "exports",
-    [switch]$AssignPublicIp = $true
+    $AssignPublicIp = $true
 )
 
 $ErrorActionPreference = "Stop"
