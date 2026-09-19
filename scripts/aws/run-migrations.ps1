@@ -6,6 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "aws-cli-settings.ps1")
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $terraformFullPath = Join-Path $repoRoot $TerraformPath
 

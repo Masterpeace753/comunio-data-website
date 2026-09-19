@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.5.3 (private API ALB emergency hardening)
+Release-Version: v0.5.4 (AWS CLI timeout and authentication preflight)
 Dokumentationsstand: 2026-09-19
 
 ## Repository-Beschreibung
