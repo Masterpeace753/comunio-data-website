@@ -1,6 +1,7 @@
 # Comunio Data Website
 
-Release-Version: v0.5.0 (AP-11 Read-only FastAPI API, Vercel CORS and CI)
+Release-Version: v0.5.1 (AP-12/AP-13, API Contract and low-cost Observability)
+Dokumentationsstand: 2026-09-19
 
 ## Repository-Beschreibung
 
@@ -31,7 +32,7 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 
 Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die read-only FastAPI laeuft als ECS-Service hinter einem oeffentlichen Application Load Balancer; `/health/live`, `/health/ready` und ein Spieler-Endpunkt sind verifiziert.
 
-Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). Noch offen sind die verbindlichen State-/Security-Gates und die Phase-3-Arbeiten fuer die API.
+Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). AP-11 ist als kostenorientiertes HTTP-MVP verifiziert. AP-12 ist als read-only-Delta-Projektion umgesetzt. AP-13 ist mit PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, Benchmark-Skript und nativen ALB-CloudWatch-Alarmen umgesetzt.
 
 Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der API-MVP ist oeffentlich ueber HTTP erreichbar und verwendet einen separaten Read-only-DB-User/Secret sowie Vercel-CORS. HTTPS/ACM, WAF und private API-Subnets bleiben bewusst nachgelagerte Haertung.
 
@@ -81,19 +82,42 @@ Hinweis fuer lokale, deterministische Tests:
 - Mit COMUNIO_SNAPSHOT_FILE kann statt Live-API eine Fixture-Datei genutzt werden.
 - Beispiel: [backend/tests/sample_snapshot.json](backend/tests/sample_snapshot.json)
 
-## Operability und Smoke Checks
+## Operability, Tests und Smoke Checks
 
 - AP-5/AP-6 Runbook: [backend/OPERABILITY-AP5-AP6.md](backend/OPERABILITY-AP5-AP6.md)
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
 - AP-9/AP-9.2 Scheduler-Runbook (inkl. Login-Retry und Alarm): [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
 - AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
-- Security-Review: [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
+- Security-Review (historischer Stichtag): [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
 
-Verbindliche Gates vor dem naechsten Ausbau:
+Lokale Backend-Tests ohne AWS:
+
+```powershell
+Set-Location backend
+$env:PYTHONPATH = "."
+python -m pytest tests -q
+```
+
+Integrationstests gegen PostgreSQL 16:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/comunio_test?sslmode=disable"
+python -m pytest tests -m integration -q
+```
+
+AP-13-Benchmark gegen eine synthetische Testdatenbank:
+
+```powershell
+python scripts/benchmark_api.py
+```
+
+Abgeschlossene Basis-Gates:
 
 - G1 Login-Bootstrap
 - G2 Migrations-Idempotenz
 - G3 Schema-Integritaet
+
+Die AWS-Production-API ist bewusst ein kostenguenstiges MVP mit oeffentlichem HTTP-ALB, `assign_public_ip=true` und einem API-Task. HTTPS/ACM, WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben optionale spaetere Haertung. Native ALB-Metriken alarmieren API-P95 sowie 4xx-/5xx-Raten; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
 
 ## Requirements-Status
 
@@ -114,9 +138,9 @@ Hinweis zum Comunio-Adapter:
 
 ## Naechste Schritte
 
-1. Blockierendes Security-Finding H1 schliessen: rohe Exception-Details aus Logs entfernen und Sanitization-Tests ergaenzen.
-1. Terraform-State sicher verwalten und sensible Werte rotieren, falls sie ausserhalb des geschuetzten AWS-/CI-Kontexts exponiert waren.
-1. Produktions-Secret-Policy strukturell erzwingen und auf immutable Container-Image-Referenzen umstellen.
-1. Nach dem Drei-Lauf-Nachweis AP-10 Idempotenz-/Retry-Nachweise vervollstaendigen und AP-11 FastAPI-Endpunkte umsetzen.
+1. SNS-Subscription bestaetigen und `terraform apply` fuer das Alarmrouting ausfuehren, falls E-Mail-Benachrichtigungen gewuenscht sind.
+1. AP-13-AWS-Staging-Baseline nur vor groesseren Releases oder bei Skalierungsbedarf starten; sie ist kostenpflichtig und kein MVP-Blocker.
+1. Optionales AP-10a.5-Hardening planen: privater ECS-Egress, NAT/VPC-Endpoints, `assign_public_ip=false`, HTTPS/ACM und WAF.
+1. Vor Team-Onboarding den Remote-Terraform-State mit `terraform init -migrate-state` nach manueller Freigabe aktivieren.
 
 Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).

@@ -132,7 +132,19 @@ def test_player_history_maps_dates(monkeypatch) -> None:
     monkeypatch.setattr(
         api_app.repositories,
         "get_player_history",
-        lambda *args: [(date(2026, 1, 1), captured_at, 1250000)],
+        lambda *args: [(
+            date(2026, 1, 1),
+            captured_at,
+            1250000,
+            None,
+            None,
+            None,
+            date(2026, 1, 1),
+            1250000,
+            0,
+            None,
+            0.0,
+        )],
     )
 
     try:
@@ -142,6 +154,84 @@ def test_player_history_maps_dates(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["items"][0]["value_eur"] == 1250000
+    assert response.json()["items"][0]["delta_first_eur"] == 0
+    assert response.json()["items"][0]["delta_previous_day_eur"] is None
+
+
+def test_player_history_returns_delta_projection(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    captured_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        api_app.repositories,
+        "get_player_history",
+        lambda *args: [(
+            date(2026, 1, 2),
+            captured_at,
+            1100,
+            date(2026, 1, 1),
+            1000,
+            100,
+            date(2026, 1, 1),
+            1000,
+            100,
+            10.0,
+            10.0,
+        )],
+    )
+
+    try:
+        response = test_client.get("/api/v1/players/1/history")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0] == {
+        "snapshot_date": "2026-01-02",
+        "captured_at": "2026-01-02T00:00:00Z",
+        "value_eur": 1100,
+        "previous_snapshot_date": "2026-01-01",
+        "previous_value_eur": 1000,
+        "delta_previous_day_eur": 100,
+        "first_snapshot_date": "2026-01-01",
+        "first_value_eur": 1000,
+        "delta_first_eur": 100,
+        "percent_delta_previous_day": 10.0,
+        "percent_delta_first": 10.0,
+    }
+
+
+def test_player_history_preserves_null_reference_deltas(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    captured_at = datetime(2026, 1, 3, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        api_app.repositories,
+        "get_player_history",
+        lambda *args: [(
+            date(2026, 1, 3),
+            captured_at,
+            900,
+            None,
+            None,
+            None,
+            date(2026, 1, 1),
+            1000,
+            -100,
+            None,
+            -10.0,
+        )],
+    )
+
+    try:
+        response = test_client.get("/api/v1/players/1/history")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["delta_previous_day_eur"] is None
+    assert item["percent_delta_previous_day"] is None
+    assert item["delta_first_eur"] == -100
+    assert item["percent_delta_first"] == -10.0
 
 
 def test_teams_returns_player_count(monkeypatch) -> None:

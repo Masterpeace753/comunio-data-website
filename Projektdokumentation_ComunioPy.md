@@ -36,25 +36,27 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 
 ## Delta-Berechnung
 
-- Delta Vortag = `value_today - value_yesterday`
-- Delta Erstwert = `value_today - value_first_snapshot`
-- Fehlende Werte → `NULL`
+- `snapshot_date` ist die fachliche Zeitachse; `captured_at` ist nur der technische Erfassungszeitpunkt.
+- Das Vortagsdelta verwendet ausschliesslich den exakten Kalendertag davor. Fehlt dieser Snapshot, bleiben Referenz und Vortagsdelta `NULL`.
+- Das Erstwertdelta verwendet den chronologisch ersten Snapshot der gesamten Spielerhistorie; beim ersten Snapshot ist es `0`.
+- Prozentwerte sind bei fehlender Referenz oder Referenzwert `0` `NULL`.
+- Deltas werden in der read-only-API-Projektion berechnet und nicht redundant gespeichert. Details stehen in `data_model.md` und `implementierungsplan.md`.
 
 ## Architektur (Kurzüberblick)
 
 - **Ingest:** Python + eigener ComunioPyClient
 - **DB:** PostgreSQL (optional TimescaleDB)
 - **Backend:** FastAPI
-- **Frontend:** React oder Dash
-- **Automatisierung:** Cron‑Jobs
-- **Monitoring:** Logging + Alerts
+- **Frontend:** React auf Vercel
+- **Automatisierung:** EventBridge → ECS Fargate
+- **Monitoring:** CloudWatch Logs sowie native ALB-Metriken fuer API-P95 und Fehlerquoten
 
 ## Update-Frequenz
 
 - Marktwerte: täglich (optional mehrfach)
 - Punkte: nach Spieltag
 
-## To‑Do (erste 2 Wochen)
+## Urspruengliche To-do-Liste (historischer Plan)
 
 1. Repo + README erstellen
 1. DB‑Schema implementieren
@@ -64,6 +66,10 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 1. Transfermarkt‑Abruf testen
 1. Dashboard‑MVP erstellen
 1. Legal Check
+
+Die aktuelle verbindliche Roadmap steht in `implementierungsplan.md`. AP-11, AP-12
+und AP-13 sind umgesetzt; private Netzwerke, HTTPS/ACM, WAF, Remote-State-Migration
+und eine AWS-Staging-Baseline bleiben nachgelagerte Entscheidungen.
 
 ## Persistenz der Entscheidung
 

@@ -8,6 +8,8 @@
 **Medium Issues:** 3 confirmed\
 **Low Issues:** 2 observations
 
+> Historical review snapshot from 2026-08-25. Several findings were remediated after this review; the current status is maintained in [README.md](../../README.md) and [implementierungsplan.md](../../implementierungsplan.md). Do not use the historical production-readiness verdict as the current status.
+
 ## Executive Summary
 
 The project has a narrow current attack surface because it is an ingest worker without a public API or frontend in the repository. Parameterized SQL is used, external HTTP requests do not disable certificate verification, and Terraform state and `terraform.tfvars` are ignored and are not tracked by Git.

@@ -477,7 +477,7 @@ resource "aws_ecs_service" "api" {
   load_balancer {
     target_group_arn = aws_lb_target_group.api[0].arn
     container_name   = "api"
-    container_port    = 8000
+    container_port   = 8000
   }
 
   depends_on = [aws_lb_listener.api_http]
@@ -608,6 +608,135 @@ resource "aws_cloudwatch_metric_alarm" "login_exhausted" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = compact([var.alert_sns_topic_arn])
   ok_actions          = compact([var.alert_sns_topic_arn])
+
+  tags = local.common_tags
+}
+
+# AP-13: use native ALB metrics so API latency and error rates do not require
+# application-level custom metrics or a separate monitoring service.
+resource "aws_cloudwatch_metric_alarm" "api_p95_latency" {
+  count             = var.api_enabled ? 1 : 0
+  alarm_name        = "${local.name_prefix}-api-p95-latency"
+  alarm_description = "API ALB target response-time P95 exceeded the configured threshold"
+  namespace         = "AWS/ApplicationELB"
+  metric_name       = "TargetResponseTime"
+  dimensions = {
+    LoadBalancer = aws_lb.api[0].arn_suffix
+    TargetGroup  = aws_lb_target_group.api[0].arn_suffix
+  }
+  extended_statistic  = "p95"
+  period              = 300
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
+  threshold           = var.api_p95_threshold_seconds
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = compact([var.alert_sns_topic_arn])
+  ok_actions          = compact([var.alert_sns_topic_arn])
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
+  count               = var.api_enabled ? 1 : 0
+  alarm_name          = "${local.name_prefix}-api-5xx-rate"
+  alarm_description   = "API ALB target 5xx error rate exceeded the configured threshold"
+  threshold           = var.api_5xx_rate_threshold_percent
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = compact([var.alert_sns_topic_arn])
+  ok_actions          = compact([var.alert_sns_topic_arn])
+
+  metric_query {
+    id          = "errors"
+    return_data = false
+    metric {
+      metric_name = "HTTPCode_Target_5XX_Count"
+      namespace   = "AWS/ApplicationELB"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = aws_lb.api[0].arn_suffix
+        TargetGroup  = aws_lb_target_group.api[0].arn_suffix
+      }
+    }
+  }
+
+  metric_query {
+    id          = "requests"
+    return_data = false
+    metric {
+      metric_name = "RequestCount"
+      namespace   = "AWS/ApplicationELB"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = aws_lb.api[0].arn_suffix
+        TargetGroup  = aws_lb_target_group.api[0].arn_suffix
+      }
+    }
+  }
+
+  metric_query {
+    id          = "rate"
+    expression  = "IF(requests > 0, errors / requests * 100, 0)"
+    label       = "API target 5xx rate (%)"
+    return_data = true
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_4xx_rate" {
+  count               = var.api_enabled ? 1 : 0
+  alarm_name          = "${local.name_prefix}-api-4xx-rate"
+  alarm_description   = "API ALB target 4xx error rate exceeded the configured threshold"
+  threshold           = var.api_4xx_rate_threshold_percent
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = compact([var.alert_sns_topic_arn])
+  ok_actions          = compact([var.alert_sns_topic_arn])
+
+  metric_query {
+    id          = "errors"
+    return_data = false
+    metric {
+      metric_name = "HTTPCode_Target_4XX_Count"
+      namespace   = "AWS/ApplicationELB"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = aws_lb.api[0].arn_suffix
+        TargetGroup  = aws_lb_target_group.api[0].arn_suffix
+      }
+    }
+  }
+
+  metric_query {
+    id          = "requests"
+    return_data = false
+    metric {
+      metric_name = "RequestCount"
+      namespace   = "AWS/ApplicationELB"
+      period      = 300
+      stat        = "Sum"
+      dimensions = {
+        LoadBalancer = aws_lb.api[0].arn_suffix
+        TargetGroup  = aws_lb_target_group.api[0].arn_suffix
+      }
+    }
+  }
+
+  metric_query {
+    id          = "rate"
+    expression  = "IF(requests > 0, errors / requests * 100, 0)"
+    label       = "API target 4xx rate (%)"
+    return_data = true
+  }
 
   tags = local.common_tags
 }

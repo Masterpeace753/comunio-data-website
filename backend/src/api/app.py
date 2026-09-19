@@ -88,7 +88,15 @@ def player(player_id: int, connection: Db) -> PlayerDetail:
     return PlayerDetail(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], source=row[7], first_seen_at=row[8], last_seen_at=row[9], updated_at=row[10])
 
 
-@app.get("/api/v1/players/{player_id}/history", response_model=PlayerHistoryResponse)
+@app.get(
+    "/api/v1/players/{player_id}/history",
+    response_model=PlayerHistoryResponse,
+    responses={
+        400: {"description": "Invalid date range"},
+        404: {"description": "Player not found"},
+        503: {"description": "Database unavailable"},
+    },
+)
 def player_history(
     player_id: int,
     connection: Db,
@@ -99,7 +107,27 @@ def player_history(
     if from_date and to_date and from_date > to_date:
         raise HTTPException(status_code=400, detail={"code": "invalid_date_range", "message": "from_date must not be after to_date."})
     rows = repositories.get_player_history(connection, player_id, from_date, to_date, limit)
-    return PlayerHistoryResponse(player_id=player_id, from_date=from_date, to_date=to_date, items=[MarketValuePoint(snapshot_date=row[0], captured_at=row[1], value_eur=row[2]) for row in rows])
+    return PlayerHistoryResponse(
+        player_id=player_id,
+        from_date=from_date,
+        to_date=to_date,
+        items=[
+            MarketValuePoint(
+                snapshot_date=row[0],
+                captured_at=row[1],
+                value_eur=row[2],
+                previous_snapshot_date=row[3],
+                previous_value_eur=row[4],
+                delta_previous_day_eur=row[5],
+                first_snapshot_date=row[6],
+                first_value_eur=row[7],
+                delta_first_eur=row[8],
+                percent_delta_previous_day=row[9],
+                percent_delta_first=row[10],
+            )
+            for row in rows
+        ],
+    )
 
 
 @app.get("/api/v1/teams", response_model=Page[TeamSummary])

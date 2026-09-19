@@ -210,6 +210,24 @@ variable "api_allowed_origins" {
   default     = "http://localhost:3000,http://127.0.0.1:3000"
 }
 
+variable "api_p95_threshold_seconds" {
+  description = "ALB target response time P95 alarm threshold for the API"
+  type        = number
+  default     = 0.5
+}
+
+variable "api_5xx_rate_threshold_percent" {
+  description = "ALB target 5xx error-rate alarm threshold for the API"
+  type        = number
+  default     = 5
+}
+
+variable "api_4xx_rate_threshold_percent" {
+  description = "ALB target 4xx error-rate alarm threshold for the API"
+  type        = number
+  default     = 25
+}
+
 variable "comunio_credentials_secret_arn" {
   description = "Secrets Manager ARN containing the Comunio username/password JSON"
   type        = string

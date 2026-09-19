@@ -163,18 +163,38 @@ Audit-Trail fuer relevante Datenaenderungen.
 
 ## 4. Abgeleitete Kennzahlen
 
-Die folgenden Kennzahlen werden in der API berechnet (nicht redundant persistiert):
+Die folgenden Kennzahlen werden fuer `GET /api/v1/players/{id}/history` zur Laufzeit berechnet und nicht redundant persistiert:
 
-- Delta Vortag: value_today - value_yesterday
-- Delta Erstwert: value_today - value_first_snapshot
-- Prozentdelta: (value_today - value_reference) / value_reference * 100
-- Ranking-Score, z. B. Wertsteigerung pro Tag
+- `delta_previous_day_eur = value_eur - previous_value_eur`, wobei `previous_value_eur` ausschliesslich vom exakten Kalendertag `snapshot_date - 1 day` stammt.
+- `delta_first_eur = value_eur - first_value_eur`, wobei `first_value_eur` der chronologisch erste Snapshot des Spielers ueber die gesamte Historie ist.
+- `percent_delta_previous_day = delta_previous_day_eur / previous_value_eur * 100`.
+- `percent_delta_first = delta_first_eur / first_value_eur * 100`.
 
-Regel fuer fehlende Referenzwerte:
+Verbindliche Regeln:
 
-- Kein Referenzwert vorhanden fuehrt zu NULL in Delta-Feldern.
+- Fehlt der exakte Kalendertag, sind Referenzdatum, Referenzwert, Vortagsdelta und Vortagsprozentwert `NULL`.
+- Beim ersten vorhandenen Snapshot ist `delta_first_eur = 0`; `percent_delta_first` ist `NULL`, wenn der Erstwert `0` ist.
+- Bei einem Referenzwert `0` ist der jeweilige Prozentwert `NULL`; es gibt keine Division durch null und keinen Ersatzwert `0`.
+- Negative Deltas und Prozentwerte sind gueltige Ergebnisse, obwohl `market_values.value_eur` selbst nicht negativ sein darf.
+- Die Berechnung erfolgt vor Zeitraumfilter und Pagination. `captured_at` ist keine fachliche Vergleichsachse.
+- Die Projektion verwendet PostgreSQL-Fensterfunktionen; eine neue Tabelle oder Migration ist fuer AP-12 nicht erforderlich.
 
 ## 5. Indizes
+
+### 5.1 AP-13 Integrations- und Benchmarkmodell
+
+- AP-13 verwendet eine isolierte PostgreSQL-16-Testdatenbank und die produktiven Migrationen; es werden keine Benchmark-Spalten oder Fachtabellen eingefuehrt.
+- Die Fixtures pruefen Teams, Spieler ohne Historie, taegliche Marktwerte, absichtliche Kalendertagsluecken, Marktwert `0`, positive und negative Deltas sowie Transfermarktzeilen ohne Personenbezug.
+- Die Integrationsabnahme prueft `UNIQUE (player_id, snapshot_date)`, Fremdschluessel, `value_eur >= 0` und die vorhandenen History-/Transfermarkt-Indizes.
+- AP-12 bleibt eine read-only-Projektion aus `market_values`. Query-Plaene und P95-Werte werden als technische Testartefakte ausserhalb des fachlichen Datenmodells gespeichert.
+- Ein Spieler ohne Marktwerte ist zulaessig; fehlende Kalendertage erzeugen keine kuenstlichen Snapshot-Zeilen. Negative Deltas sind zulaessig, negative persistierte Marktwerte nicht.
+
+### 5.2 Produktionsindizes fuer AP-13
+
+- `market_values(player_id, snapshot_date DESC)` ist die Baseline fuer History und AP-12-Referenzen.
+- `market_values(snapshot_date DESC)` unterstuetzt Datums- und Latest-Snapshot-Abfragen.
+- `transfermarket_snapshots(player_id, snapshot_date DESC)` wird fuer Transfermarkt-History verwendet; die Standardabfrage nach Snapshot-Tag bleibt Bestandteil der Baseline-Messung.
+- Zusätzliche Indizes, Caching oder materialisierte Projektionen werden erst nach `EXPLAIN (ANALYZE, BUFFERS)` und reproduzierbarer P95-Messung eingefuehrt.
 
 ## 5. API-Lesevertraege fuer AP-11
 
@@ -192,8 +212,8 @@ Verbindliche API-Regeln:
 - Listen-Endpunkte begrenzen `limit` auf maximal 100 und liefern `items`, `limit`, `offset` und `total`.
 - Unbekannte Einzelressourcen liefern 404; leere Historien liefern 200 mit leerer `items`-Liste.
 - Snapshot-Tage werden als `YYYY-MM-DD`, technische Zeitpunkte als ISO-8601 ausgegeben.
-- Deltas werden nicht redundant gespeichert. AP-11 liefert die Rohhistorie; AP-12 definiert und berechnet Vortags-, Erstwert- und Prozentdeltas.
-- Fehlende Referenzwerte fuer Deltas bleiben `NULL` und werden nicht als `0` interpretiert.
+- Deltas werden nicht redundant gespeichert. AP-12 liefert die Rohhistorie mit additiven Feldern fuer Referenzdatum, Referenzwert, absolute und prozentuale Deltas.
+- Die neuen Referenz- und Delta-Felder sind bei fehlenden oder ungueltigen Referenzen nullable; bestehende Rohwertfelder und HTTP-Fehlerverhalten bleiben unveraendert.
 - `owner_name` aus dem Transfermarkt ist potenziell personenbezogen und darf erst nach einer fachlichen Freigabe oeffentlich verwendet werden.
 - Die aktuelle Ingest-Pipeline befuellt `transfermarket_snapshots` noch nicht. Der AP-11-Endpunkt liefert bis zur Ingest-Erweiterung einen validen leeren Datensatz statt fingierter Daten.
 
@@ -251,7 +271,7 @@ Bei groesserer Datenmenge:
 - G3: Snapshot-Input wird vor der Persistenz gegen Schema, Groesse und erlaubten Pfad geprueft.
 - G4: Die fachlichen Idempotenz-Constraints bleiben unveraendert; Security-Haertung darf keine Duplikate oder fachliche Historie erzeugen.
 - G5: Prod-Deploys erzwingen `COMUNIO_REQUIRE_SECRET_MODE=true` und verbieten ENV-Quellen; Bild- und Deployment-Referenzen muessen immutable sein.
-- G6: Der Release-Status private networking gilt nur dann als gruen, wenn der ECS-Task ohne Public IP gestartet, der ECR-/Secrets-Manager-Pfad im privaten VPC erfolgreich verifiziert und der DB-Verbindungsnachweis aus dem Task selbst erbracht wurde.
+- G6: Der kostenorientierte MVP ist mit `assign_public_ip=true` verifiziert. Der Status fuer optionale private Networking-Haertung wird erst gruen, wenn der ECS-Task ohne Public IP gestartet, der ECR-/Secrets-Manager-Pfad im privaten VPC verifiziert und die DB-Verbindung aus dem Task selbst nachgewiesen wurde.
 
 ### 8.3 Operational Release Gate (2026-09-12)
 

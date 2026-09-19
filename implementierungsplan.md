@@ -132,8 +132,8 @@ Arbeitspakete:
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung, Secret-Scan, Dependency-Scan und Terraform-Pruefungen)
 - AP-11 FastAPI-Zugriffsschicht: API-Vertrag, FastAPI-App, Read-Repositories, Spieler/Teams/Historie/Transfermarkt und API-Tests
-- AP-12 Delta-Berechnungen in API
-- AP-13 API-Tests und Performance-Baselines
+- AP-12 Delta-Berechnungen in API: SQL-Projektion, additive Schemas und Randfalltests
+- AP-13 Integrations-, Contract-, Fehlerpfad- und Performance-Nachweise
 
 Ergebnis:
 
@@ -255,11 +255,52 @@ Der aktuelle Stand liegt innerhalb von Phase 3:
 
 Naechste Schritte in verbindlicher Reihenfolge:
 
-1. AP-11-DEV umsetzen: versionierter read-only API-Vertrag, FastAPI-App, typisierte Schemas, Pagination und Health-Endpunkte.
-1. AP-11-DEV vervollstaendigen: Spieler-, Team-, Historie- und Transfermarkt-Queries mit parametrisiertem SQL, 404/422/503-Verhalten und API-Tests.
-1. AP-12 als fachliche Anschlussentscheidung festlegen: Delta-Semantik fuer Vortag, Erstwert, Prozentwert und fehlende Referenzen.
-1. AP-13 inkrementell ausbauen: PostgreSQL-Integrationstests, OpenAPI-Vertrag, Fehlerpfade und P95-Baseline.
-1. AP-11-PROD ist fuer das MVP verifiziert: oeffentlicher ALB-DNS, gesunder ECS-Target, `/health/live`, `/health/ready` und Spieler-Endpunkt erfolgreich. Als naechstes folgen HTTPS/ACM, WAF und private API-Subnets als Haertung.
+1. AP-12 ist umgesetzt; die PostgreSQL- und Vertragsintegration wird in AP-13 als Regression abgesichert.
+1. AP-13 ist implementiert: PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, reproduzierbares Benchmark-Skript und kostenguenstige native ALB-CloudWatch-Alarme sind vorhanden. Eine AWS-Staging-Baseline bleibt optional.
+1. Optionales Hardening nach dem MVP: AP-10a.5 mit NAT-/ECR-Endpoint-Pfad, privatem ECS-Task ohne Public IP und DB-Reconnect-Nachweis.
+1. Danach optional AP-11-PROD weiter haerten: HTTPS/ACM, WAF und private API-Subnets.
+
+### AP-12 Implementierungsumfang und Definition of Done
+
+AP-12 wird als read-only-Projektion in der bestehenden API umgesetzt:
+
+- `get_player_history()` berechnet Referenzwerte mit PostgreSQL-Fensterfunktionen aus `market_values`; Deltas werden nicht gespeichert.
+- `snapshot_date` ist die fachliche Zeitachse. `previous_*` bezieht sich auf den exakten Kalendertag davor, nicht auf `captured_at` oder den naechsten vorhandenen Snapshot.
+- Der Erstwert wird ueber die gesamte Spielerhistorie bestimmt, bevor `from_date`, `to_date` und `limit` angewendet werden.
+- Die History-Response erhaelt additive Felder fuer vorheriges Datum/Wert, Erstwertdatum/-wert, absolute Deltas und Prozentdeltas.
+- Fehlende Kalendertage liefern `NULL` fuer die Vortagsreferenz und deren Deltas. Beim ersten vorhandenen Snapshot ist `delta_first_eur=0`; bei Referenzwert `0` bleibt der Prozentwert `NULL`.
+- Negative absolute und prozentuale Deltas werden als gueltige Fachwerte ausgeliefert.
+- AP-10a.5 bleibt davon unabhaengig und ist weiterhin optionale Netzwerk-Haertung nach dem MVP.
+
+Definition of Done:
+
+- API-Schema und OpenAPI enthalten alle AP-12-Felder mit korrekten nullable Typen.
+- Tests decken positiven Wertanstieg, Wertverlust, ersten Snapshot, fehlenden Kalendervortag, Erstwert ueber Zeitraumfilter und Referenzwert `0` ab.
+- Bestehendes 404/400/422/503-Verhalten, Sortierung und Limitierung bleiben unveraendert.
+- Keine neue Tabelle, Migration, Schreibberechtigung oder AWS-Ressource ist fuer AP-12 erforderlich.
+- AP-13 misst anschliessend P95, DB-Laufzeit und Query-Plan; Caching oder materialisierte Projektionen werden erst nach Messung entschieden.
+
+### AP-13 Implementierungsumfang und Definition of Done
+
+AP-13 ist in vier Nachweise gegliedert:
+
+- **AP-13.1 PostgreSQL-Integration:** PostgreSQL 16 als CI-Service, sequenzielle Migrationen, idempotente Wiederholung, deterministische Fixtures und echte Repository-/API-Aufrufe.
+- **AP-13.2 OpenAPI-Contract:** Laufzeitpruefung von `/api/v1`, ausschliesslichen GET-Methoden, Pagination-Grenzen, AP-12-Nullable-Feldern und dokumentierten History-Fehlerantworten.
+- **AP-13.3 Fehlerpfade:** 400 bei ungueltigem Datumsbereich, 404 bei unbekannten Ressourcen, 422 bei ungueltigen Parametern, 503 bei Datenbankproblemen und keine sensiblen Fehlerdetails.
+- **AP-13.4 Performance:** `backend/scripts/benchmark_api.py` misst Repository-/DB-P50, P95, P99 und Maximalzeit fuer History, Spieler, Teams und Transfermarkt. Eine AWS-Staging-Baseline mit ECS/ALB/RDS bleibt ein separater releasebezogener Nachweis.
+
+Definition of Done:
+
+- Migrationen laufen gegen eine leere PostgreSQL-16-Datenbank und sind wiederholbar.
+- AP-12-Faelle fuer positive, negative, erste, fehlende und Null-Referenzwerte laufen gegen echte SQL-Daten.
+- OpenAPI enthaelt den versionierten Read-only-Vertrag und alle AP-12-Felder mit korrekten nullable Typen.
+- 400-, 404-, 422- und 503-Verhalten ist automatisiert geprueft; SQL-, DSN-, Secret- und Stacktrace-Details werden nicht ausgegeben.
+- Benchmark-Artefakte enthalten Datenbankziel, Iterationszahl und P50/P95/P99-Werte; Produktions-P95 wird nicht aus lokalen CI-Zeiten abgeleitet.
+- Caching, Redis, Read Replica, Partitionierung und materialisierte Projektionen werden erst nach Query-Plan- und P95-Nachweis entschieden.
+- AP-10a.5 bleibt optionale Netzwerk-Haertung und ist kein AP-13-Abnahmekriterium.
+- Die API-Observability verwendet native ALB-Metriken statt Custom Metrics: P95-Alarm mit 0,5 Sekunden, 5xx-Rate mit 5 Prozent und 4xx-Rate mit 25 Prozent als konfigurierbare Terraform-Defaults. Alarme werden nur mit `api_enabled=true` angelegt.
+- CloudWatch-Alarme nutzen 5-Minuten-Perioden und keine zusaetzliche Staging-Infrastruktur. Ein SNS-Topic bleibt optional; dadurch bleibt der MVP-Kostenpfad niedrig.
+- Die AWS-Staging-Baseline wird erst vor einem groesseren Release oder bei Skalierungsbedarf aktiviert, weil sie zusaetzliche ECS-, ALB- und RDS-Kosten erzeugt.
 
 ### AP-11 Umsetzungsumfang und Definition of Done
 
@@ -303,7 +344,7 @@ Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu tref
 - Security-Gates S1-S4 sind ohne Verletzung aktiv.
 - In Produktion: 0 Runs mit ENV-Credentials.
 - AP-11-API-Vertrag, Pagination und Fehlerformat sind versioniert dokumentiert.
-- AP-12-Delta-Semantik ist fuer positive, negative und fehlende Referenzwerte getestet.
+- AP-12-Delta-Semantik ist fuer positive, negative, erste, fehlende und Null-Referenzwerte getestet; die History-Projektion bleibt unter dem AP-13-P95-Ziel.
 
 ### M3 (Woche 17)
 
@@ -328,30 +369,24 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 - AP-10a.2 (erledigt, 2026-08-31): Terraform-State-Exposition geprueft (kein Git-/GitHub-Vektor, siehe Abschnitt 20.3) und Remote-Backend (S3 + DynamoDB-Lock) als Code vorbereitet (`infra/aws/terraform/state_backend.tf`, `backend.tf`). Rotation der RDS-Credentials bewusst auf P2 verschoben (dokumentierte Ausnahme, kein Expositionsvektor).
 - AP-10a.3 (erledigt, 2026-09-12): `backend/src/config.py` erzwingt in `APP_ENV=prod|production` den Pflichtmodus `COMUNIO_REQUIRE_SECRET_MODE=true`; ein ENV-Fallback wirft jetzt sofort einen Fehler und verhindert damit das unkontrollierte Blue/Green-Deployment mit Secret-Exposition.
 - AP-10a.4 (erledigt, 2026-09-12): ECR-Repository ist auf `image_tag_mutability = "IMMUTABLE"` gesetzt, und das Terraform-Input `image_tag` akzeptiert keine `latest`-Referenzen mehr. Damit sind Rollbacks nur noch via signifikanter, nicht wechselnder Image-Referenzen moeglich.
-- AP-10a.5 (blockiert, 2026-09-12): Der private Networking-Smoke-Test war nicht erfolgreich. Der ECS-Task konnte im privaten VPC keine ECR-Authentifizierung aufloesen, weil der erforderliche NAT-/ECR-Endpoint-Pfad noch fehlt. Die Freigabe der privaten Config steht daher bis zum Nachweis eines funktionierenden Outbound-Pfads aus.
 - Abnahme: Keine sensiblen Werte oder rohen Exception-Texte in Standardlogs (erfuellt); State-Bootstrap-Code ist vorbereitet, der eigentliche Backend-Umzug (`terraform init -migrate-state`) steht als bewusst manuell freizugebender Schritt aus, da er den produktiven State-Speicherort aendert.
 
 ### 12.2 P2: Produktionshygiene
 
-- AP-10a.5 Release-Gate (aktiv, 2026-09-12): In der folgenden Reihenfolge muss die private AWS-Freigabe erfolgen:
-  1. Funktionierender NAT-/ECR-Endpoint-Pfad im privaten VPC-Setup.
-  1. Erneuter ECS-Task-Run ohne Public IP (`assign_public_ip=false`) nach erfolgreichem Netzwerk-Smoke-Test.
-  1. DB-Verbindungsnachweis aus dem Task selbst.
-  1. Danach `assign_public_ip=false` als Standard-Release-Switch festschreiben.
 - AP-10b (erledigt, 2026-09-12): CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning und Dependency-Scanning sind in `.github/workflows/ci.yml` dokumentiert; die Pipeline blockiert Deployments bei Quality-Gate-Verletzung.
 - AP-9.1 (erledigt, 2026-08-31): Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachgewiesen; siehe Abschnitt 19 fuer die vollstaendige Evidenz.
 
 ### 12.3 P3: Härtung und Ausbau
 
-- AP-10a.6: Kartierte VPC-/Egress-Haertung mit NAT Gateway und ECR/Secrets Manager VPC Endpoints, danach abschliessende private Fargate-Freigabe.
-- AP-10 (Anwendungsnachweise umgesetzt, Release-Gate offen, 2026-09-13): Snapshot-Backoff (2/4/8 Sekunden, begrenzt auf vier Versuche), Login-Retry und idempotente Marktwert-Upserts sind durch fokussierte Tests nachgewiesen. Terraform erzwingt konsistente NAT-Auswahl und private Managed-VPCs benoetigen einen NAT-Pfad; ECR API/Docker sowie S3 und Secrets Manager VPC-Endpunkte sind fuer den privaten Pfad vorbereitet. Die produktive Freigabe bleibt bis zu einem erfolgreichen Task-Run ohne Public IP und einem DB-Reconnect-Nachweis blockiert.
-- AP-11: Danach die FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt umsetzen.
+- AP-10a.5/10a.6 (optional nach MVP): VPC-/Egress-Haertung mit NAT Gateway oder NAT Instance sowie ECR-/Secrets-Manager-VPC-Endpoints umsetzen; danach privaten Fargate-Task ohne Public IP und DB-Reconnect aus dem Task nachweisen.
+- AP-10 (Anwendungsnachweise umgesetzt, 2026-09-13): Snapshot-Backoff (2/4/8 Sekunden, begrenzt auf vier Versuche), Login-Retry und idempotente Marktwert-Upserts sind durch fokussierte Tests nachgewiesen. Der private Netzwerkpfad ist vorbereitet, aber fuer den kostenorientierten MVP nicht erforderlich.
+- AP-11 (umgesetzt): FastAPI-Endpunkte fuer Spieler, Teams, Historie und Transfermarkt sind als kostenorientiertes HTTP-MVP ausgerollt und verifiziert.
 
 ### 12.4 Verifizierter Stand der Release-Gate-Sequenz (2026-09-12)
 
 - Schritt 1: Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist in AWS ausgerollt, via `terraform apply` synchronisiert (`Apply complete! Resources: 0 added, 0 changed, 0 destroyed`) und mit `Exit-Code 0` verifiziert.
 - Schritt 2: NAT-Optionen A (`enable_nat_gateway`) und B (`enable_nat_instance`) wurden als schaltbare Terraform-Variablen in `infra/aws/terraform/network.tf` implementiert, validiert und im AWS-State synchronisiert.
-- Schritt 3: Der Switch auf `assign_public_ip=false` (AP-10a.6 / Enterprise Private Egress) bleibt schaltbar vorbereitet und wird erst aktiviert, wenn ein NAT Gateway / eine NAT Instance für private Egress freigegeben wird.
+- Schritt 3: Der Switch auf `assign_public_ip=false` (AP-10a.6 / Enterprise Private Egress) bleibt als optionale spaetere Haertung vorbereitet; der fehlende private Egress-Nachweis blockiert den kostenorientierten MVP nicht.
 
 ## 13. Security-Remediation-Sequenz (konsolidiert)
 
@@ -530,7 +565,7 @@ Die Verifikation ueber `aws events describe-rule`, `aws ecs list-tasks`/`describ
 
 ### 19.4 Naechster Schritt
 
-- AP-10-Anwendungsnachweise sind mit `v0.4.4` abgeschlossen; AP-11-DEV und das oeffentliche MVP-Deployment sind Bestandteil von `v0.5.0`. Der naechste Schritt ist die Security-Haertung mit HTTPS/ACM, WAF und privaten API-Subnets.
+- AP-10-Anwendungsnachweise, AP-11, AP-12 und AP-13 sind inzwischen umgesetzt. Der naechste verbindliche Nachweis ist nicht die kostenpflichtige Staging-Umgebung, sondern die laufende CI-/Production-Beobachtung; HTTPS/ACM, WAF und private API-Subnets bleiben optionale Haertung.
 
 ## 20. AP-10a: Konsolidierte Agent-Beiträge und Hardening-Roadmap (2026-08-31)
 
@@ -615,13 +650,13 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 
 ### 20.6 Offene Entscheidungen und Blocker
 
-| Entscheidung                                                        | Status                        | Aktion                                                                                               | Deadline                       |
-| ------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Remote Terraform-State aktivieren (`terraform init -migrate-state`) | **Cooked, awaiting approval** | Manuelle Freigabe vor Execution; siehe Runbook in `infra/aws/README.md` + `state_backend.tf`         | Nach nächster Team-Review      |
-| RDS-Master-Password rotieren                                        | **Deferred, documented**      | Runbook vorbereitet; Rotation opportunistisch oder beim Team-Onboarding                              | Nach State-Backend-Aktivierung |
-| RDS Multi-AZ aktivieren                                             | **Deferred (cost mandate)**   | Explizit auf Q1 2027 verschoben (Infrastruktur-Budget-Constraint)                                    | Q1 2027                        |
-| Secrets-Manager-Pflicht in Prod durchsetzen                         | **P1 pending**                | Terraform `precondition` hinzufügen auf ECS-Task-Definition, das `require_secret_mode=true` erzwingt | Vor nächstem Prod-Deploy       |
-| Dedicated terraform-deploy IAM-Role                                 | **P2 pending**                | Design vorbereitet, Aktivierung bei Team-Onboarding                                                  | Q4 2026                        |
+|Entscheidung|Status|Aktion|Deadline|
+|---|---|---|---|
+|Remote Terraform-State aktivieren (`terraform init -migrate-state`)|**Cooked, awaiting approval**|Manuelle Freigabe vor Execution; siehe Runbook in `infra/aws/README.md` + `state_backend.tf`|Nach naechster Team-Review|
+|RDS-Master-Passwort rotieren|**Deferred, documented**|Runbook vorbereitet; Rotation opportunistisch oder beim Team-Onboarding|Nach State-Backend-Aktivierung|
+|RDS Multi-AZ aktivieren|**Deferred (cost mandate)**|Explizit auf Q1 2027 verschoben (Infrastruktur-Budget-Constraint)|Q1 2027|
+|Secrets-Manager-Pflicht in Prod durchsetzen|**Erledigt**|Terraform-/Runtime-Gates erzwingen Secrets Manager in Produktion|2026-09-12|
+|Dedicated terraform-deploy IAM-Role|**P2 optional**|Design vorbereitet, Aktivierung bei Team-Onboarding|Q4 2026|
 
 ### 20.7 Zusammenfassung: AP-10a abgeschlossen, nächste Phase vorbereitet
 
@@ -631,16 +666,16 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 - ✅ State-Exposure-Analyse (P1): Kein Git-Vektor, Bootstrap-Code ready, Aktivierung deferred.
 - ✅ Security-Gates S1–S4 dokumentiert und teilweise durchgesetzt (S2/S4 live, S1/S3 in Terraform pending).
 
-**Noch zu tun (P1-Gated vor Production):**
+**Noch zu tun (manueller Betriebs-/Hardening-Schritt, kein MVP-Blocker):**
 
-- Remote State aktivieren (manuelle Freigabe).
-- Secrets-Manager-Pflicht in Terraform durchsetzen.
+- Remote State aktivieren (manuelle Freigabe mit `terraform init -migrate-state`).
 
-**P2–P3 (nach AP-10a, vor API-Launch):**
+**P2–P3 (optionale Weiterentwicklung nach dem API-MVP):**
 
-- AP-10b: CI-Gates (Tests, Terraform fmt/validate, Secret-Scanning).
-- AP-10c: Container-Image-Tagging (immutable ref statt `latest`).
-- AP-11: API-Grundlage (FastAPI, Endpoints für Spieler/Teams/Historie).
+- AP-10b: CI-Gates sind umgesetzt.
+- AP-10c: Immutable Image-Referenzen sind umgesetzt.
+- AP-11/AP-12/AP-13: API, Delta-Projektion und Integrations-/Contract-Nachweise sind umgesetzt.
+- Optional: private Netzwerk-Haertung, HTTPS/ACM, WAF und AWS-Staging-Baseline.
 
 ### 20.8 Migration-Status (2026-09-01)
 

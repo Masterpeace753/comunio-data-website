@@ -87,3 +87,12 @@ output "api_task_definition_arn" {
   description = "Task definition ARN for the public API"
   value       = try(aws_ecs_task_definition.api[0].arn, null)
 }
+
+output "api_observability_alarm_names" {
+  description = "Low-cost native ALB alarm names for API latency and error rates"
+  value = var.api_enabled ? [
+    aws_cloudwatch_metric_alarm.api_p95_latency[0].alarm_name,
+    aws_cloudwatch_metric_alarm.api_5xx_rate[0].alarm_name,
+    aws_cloudwatch_metric_alarm.api_4xx_rate[0].alarm_name,
+  ] : []
+}

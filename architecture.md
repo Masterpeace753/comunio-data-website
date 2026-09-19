@@ -75,8 +75,17 @@ flowchart LR
 - Verantwortung:
 
   - Read-only-REST-Endpunkte fuer Frontend und spaetere Integrationen
-  - Abfragen und Projektionen aus PostgreSQL; Delta-Berechnungen gehoeren zu AP-12
+  - Abfragen und Projektionen aus PostgreSQL; AP-12 berechnet Marktwert-Deltas read-only zur Laufzeit
   - keine Schreiboperationen und keine Comunio-Kommunikation innerhalb von Request-Handlern
+
+- AP-12-Delta-Projektion:
+
+  - `snapshot_date` ist die fachliche Vergleichsachse; `captured_at` bleibt ein technischer Erfassungszeitpunkt.
+  - `previous_snapshot_date` bezeichnet ausschliesslich den exakten Kalendertag davor. Fehlt dieser Snapshot, bleiben Vortagsdelta und Vortagsprozentwert `null`.
+  - `first_snapshot_date` und `first_value_eur` beziehen sich auf die gesamte Spielerhistorie, auch wenn die API-Abfrage einen Zeitraum filtert.
+  - `delta_first_eur` ist beim ersten vorhandenen Snapshot `0`; Prozentwerte sind bei fehlender Referenz oder Referenzwert `0` `null`.
+  - Negative Deltas sind gueltige Wertverluste. Delta-Felder werden nicht persistiert, sondern mit PostgreSQL-Fensterfunktionen und einer read-only-Projektion berechnet.
+  - Die Projektion berechnet Referenzen vor Datumsfilter und Pagination. Eine persistierte Delta-Tabelle oder ein Cache ist nicht Bestandteil von AP-12; AP-13 entscheidet anhand gemessener P95-Werte ueber Optimierungen.
 
 - Vertragsbasis:
 
@@ -95,7 +104,7 @@ flowchart LR
   - Die API wird als eigener ECS/Fargate-Service betrieben und nicht als alternatives Kommando im einmaligen Ingest-Task.
   - API-Tasks erhalten nur Datenbankzugriff und benoetigen keine Comunio-Credentials.
   - Die API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; das Ingest-Secret wird nicht geteilt.
-  - Der aktuelle API-MVP ist lokal und gegen Testdatenbanken entwickelbar; Production bleibt an das private Networking-Gate gebunden.
+  - Der aktuelle API-MVP ist als oeffentlicher HTTP-ALB mit `assign_public_ip=true` produktiv verifiziert; private Networking, HTTPS/ACM und WAF sind optionale spaetere Haertung.
 
 ### 3.3 Frontend Service (React auf Vercel)
 
@@ -123,6 +132,7 @@ flowchart LR
   - Ingest-Job fehlgeschlagen
   - keine neuen Daten innerhalb Intervall
   - API Fehlerquote ueber Schwellwert
+- Kostenentscheidung fuer den API-MVP: API-P95, 4xx- und 5xx-Raten werden ueber die bereits vorhandenen nativen ALB-Metriken in CloudWatch alarmiert. Es werden keine hochdimensionalen Custom Metrics und kein zusaetzlicher Monitoring-Service eingefuehrt.
 
 ## 4. Datenfluss
 
@@ -170,14 +180,14 @@ flowchart LR
 - RDS- und Comunio-Secrets erhalten einen dokumentierten Rotationsprozess. Automatische Rotation wird erst aktiviert, wenn der Rotationshandler inklusive Reconnect-Test produktionsreif ist.
 - Secret-Werte, Secret-Versionen und Rotationsdetails werden nicht im fachlichen Datenmodell gespeichert. CloudTrail und Secrets Manager liefern den technischen Audit-Trail.
 
-### 5.2.1 Release-Gate fuer private Networking (2026-09-12)
+### 5.2.1 Optionale Haertung fuer private Networking (2026-09-12)
 
 - **Status (2026-09-12):** Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist produktionsbereit in AWS ausgerollt, erfolgreich per `terraform apply` synchronisiert (`Apply complete!`) und mit `Exit-Code 0` verifiziert.
 - **Vorbereitete Optionen für Egress-Härtung (AP-10a.6):**
   - Option A (`enable_nat_gateway = true`): AWS Managed NAT Gateway (~$33/Mo).
   - Option B (`enable_nat_instance = true`): Low-Cost `t4g.nano` NAT Instance (~$3/Mo).
   - Beide Optionen sind im Terraform-Code (`network.tf`, `variables.tf`) schaltbar implementiert und im AWS-State synchronisiert.
-- **Freigabebedingung für `assign_public_ip = false`:**
+- **Voraussetzungen fuer die spaetere Umschaltung auf `assign_public_ip = false`:**
   1. Freigabe und Umschaltung auf Option A oder Option B in `terraform.tfvars`.
   1. `terraform apply` zur Bereitstellung der NAT-Route.
   1. ECS-Task ohne Public IP starten (`assign_public_ip=false`) und mit `Exit-Code 0` verifizieren.
@@ -211,6 +221,20 @@ flowchart LR
 - API-Logs enthalten Request-ID, Route, Statusklasse und Latenz, aber keine sensiblen Query- oder Datenbankdetails.
 - Vor einem oeffentlichen Production-Expose sind TLS, CORS-Allowlist, Rate Limiting und eine getrennte Read-only-Datenbankrolle verbindlich zu entscheiden.
 - ALB, API-Service und RDS werden mit getrennten Security Groups betrieben; RDS akzeptiert Verbindungen nur von API und Ingest.
+- Die History-Antwort erweitert `MarketValuePoint` additiv um Referenzdaten, absolute Deltas und Prozentdeltas. Die neuen Felder sind bei fehlenden Referenzen nullable.
+- AP-12 bleibt kostenneutral: keine neue AWS-Ressource, kein neuer Schreibpfad und keine persistierten Delta-Spalten. AP-13 misst History-P95, Datenbanklaufzeit und gelesene Zeilen.
+
+### 7.2 AP-13 Integrations- und Performancevertrag
+
+- CI verwendet PostgreSQL 16 als kurzlebigen Servicecontainer. Alle Migrationen werden auf einer leeren Datenbank angewendet und erneut idempotent ausgefuehrt.
+- Integrationstests pruefen echte Repository-SQL-Abfragen, AP-12-Randfaelle, Constraints, Listenabfragen, leere Ergebnisse und Fehlerpfade. Mock-Tests bleiben auf Handler- und Mapping-Logik begrenzt.
+- Der OpenAPI-Vertrag wird aus `app.openapi()` geprueft. Der versionierte `/api/v1`-Namespace, ausschliessliche GET-Methoden, AP-12-Nullable-Felder und die History-Fehlerantworten sind Contract-Gates.
+- Das Benchmark-Skript `backend/scripts/benchmark_api.py` misst P50, P95, P99 und Maximalzeit getrennt nach Repository-/DB-Operationen. Der Benchmark erwartet synthetische Daten ueber `TEST_DATABASE_URL` und schreibt keine Messdaten in Fachtabellen.
+- Das Betriebsziel bleibt P95 unter 500 ms fuer definierte Standardabfragen. Eine belastbare AWS-Baseline mit ECS/ALB/RDS ist ein separater, periodischer oder releasebezogener Staging-Nachweis und kein lokales CI-Versprechen.
+- AP-10a.5 (NAT, private Tasks, VPC-Endpoints) ist kein AP-13-Gate. Redis, materialisierte Projektionen, Read Replicas und Partitionierung werden erst nach Query-Plan- und P95-Nachweis bewertet.
+- Die Production-Alarmierung nutzt drei optionale native ALB-Alarme: TargetResponseTime P95 (Default 0,5 Sekunden), Target 5xx-Rate (Default 5 Prozent) und Target 4xx-Rate (Default 25 Prozent), jeweils ueber drei 5-Minuten-Perioden mit zwei erforderlichen Ausreissern.
+- RDS-Standardmetriken und ECS-/ALB-Standardmetriken bleiben die primaere Betriebsbeobachtung. Ein SNS-Topic ist optional; ohne Topic werden Alarme nur in CloudWatch sichtbar und verursachen keine Benachrichtigungskosten.
+- Eine realistische AWS-Staging-Baseline mit ECS/ALB/RDS bleibt ein spaeterer, kostenpflichtiger P2/P3-Nachweis und ist kein MVP- oder AP-13-Blocker.
 
 ## 8. Release-Stufen (aus Lastenheft abgeleitet)
 

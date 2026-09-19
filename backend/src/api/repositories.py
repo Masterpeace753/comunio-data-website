@@ -113,10 +113,45 @@ def get_player_history(connection: PgConnection, player_id: int, from_date: date
     return _execute(
         connection,
         """
-        SELECT snapshot_date, captured_at, value_eur
-        FROM market_values
-        WHERE player_id = %s
-          AND (%s IS NULL OR snapshot_date >= %s)
+        WITH calculated_history AS (
+            SELECT current_value.snapshot_date,
+                   current_value.captured_at,
+                   current_value.value_eur,
+                   previous_value.snapshot_date AS previous_snapshot_date,
+                   previous_value.value_eur AS previous_value_eur,
+                   FIRST_VALUE(current_value.snapshot_date) OVER (
+                       PARTITION BY current_value.player_id
+                       ORDER BY current_value.snapshot_date ASC
+                   ) AS first_snapshot_date,
+                   FIRST_VALUE(current_value.value_eur) OVER (
+                       PARTITION BY current_value.player_id
+                       ORDER BY current_value.snapshot_date ASC
+                   ) AS first_value_eur
+            FROM market_values AS current_value
+            LEFT JOIN market_values AS previous_value
+              ON previous_value.player_id = current_value.player_id
+             AND previous_value.snapshot_date = current_value.snapshot_date - 1
+            WHERE current_value.player_id = %s
+        ), projected_history AS (
+            SELECT snapshot_date,
+                   captured_at,
+                   value_eur,
+                   previous_snapshot_date,
+                   previous_value_eur,
+                   value_eur - previous_value_eur AS delta_previous_day_eur,
+                   first_snapshot_date,
+                   first_value_eur,
+                   value_eur - first_value_eur AS delta_first_eur,
+                   ROUND((value_eur - previous_value_eur)::numeric * 100 / NULLIF(previous_value_eur, 0), 2) AS percent_delta_previous_day,
+                   ROUND((value_eur - first_value_eur)::numeric * 100 / NULLIF(first_value_eur, 0), 2) AS percent_delta_first
+            FROM calculated_history
+        )
+        SELECT snapshot_date, captured_at, value_eur,
+               previous_snapshot_date, previous_value_eur, delta_previous_day_eur,
+               first_snapshot_date, first_value_eur, delta_first_eur,
+               percent_delta_previous_day, percent_delta_first
+        FROM projected_history
+        WHERE (%s IS NULL OR snapshot_date >= %s)
           AND (%s IS NULL OR snapshot_date <= %s)
         ORDER BY snapshot_date DESC
         LIMIT %s

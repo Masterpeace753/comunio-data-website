@@ -1,6 +1,7 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.5.0
+Infrastructure-Version: v0.5.1
+Dokumentationsstand: 2026-09-19
 
 ## Public API MVP
 
@@ -22,7 +23,7 @@ HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening ste
 
 ## API database access
 
-The future public API service must use a separate PostgreSQL role with `SELECT`-only
+The public API service uses a separate PostgreSQL role with `SELECT`-only
 permissions and a separate Secrets Manager secret. It must not reuse the ingest
 `DATABASE_URL` secret or the Comunio credentials.
 
@@ -51,6 +52,7 @@ This repository now includes a lean AWS baseline for the backend ingest job:
 - CloudWatch Logs metric filter and alarm (`login-retries-exhausted`) that fires when all login retries are exhausted; optionally notifies `alert_sns_topic_arn`
 - Optional managed VPC with public and private subnets
 - Optional managed PostgreSQL on RDS with generated `DATABASE_URL` secret
+- Low-cost API observability through native ALB CloudWatch alarms for P95, 4xx and 5xx rates
 
 The Terraform now supports two operating modes:
 
@@ -85,7 +87,8 @@ postgresql://user:password@db-host:5432/comunio?sslmode=require
 
 ## Deployment flow
 
-1. Build and push the image.
+1. Build and push the immutable image tag.
+1. Confirm the SNS subscription if email alerting is required.
 1. Apply Terraform.
 1. Run migrations once with an ECS command override.
 1. Enable the schedule for recurring snapshots.
@@ -119,11 +122,11 @@ Rotation note: `git ls-files`/`git log` confirm `terraform.tfstate*` and `terraf
 
 ```powershell
 Set-Location backend
-docker build -t comunio-backend-aws .
+docker build -t comunio-backend-aws:<immutable-tag> .
 aws ecr get-login-password --region <region> |
   docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-docker tag comunio-backend-aws:latest <account>.dkr.ecr.<region>.amazonaws.com/comunio-backend-ingest:latest
-docker push <account>.dkr.ecr.<region>.amazonaws.com/comunio-backend-ingest:latest
+docker tag comunio-backend-aws:<immutable-tag> <account>.dkr.ecr.<region>.amazonaws.com/comunio-backend-ingest:<immutable-tag>
+docker push <account>.dkr.ecr.<region>.amazonaws.com/comunio-backend-ingest:<immutable-tag>
 ```
 
 Windows helper:
@@ -138,7 +141,7 @@ Windows helper:
 Set-Location infra/aws/terraform
 terraform init
 Copy-Item terraform.tfvars.example terraform.tfvars
-terraform apply -var-file=terraform.tfvars
+terraform apply
 ```
 
 Windows helper:

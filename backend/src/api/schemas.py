@@ -62,6 +62,14 @@ class MarketValuePoint(BaseModel):
     snapshot_date: date
     captured_at: datetime
     value_eur: int
+    previous_snapshot_date: date | None = None
+    previous_value_eur: int | None = None
+    delta_previous_day_eur: int | None = None
+    first_snapshot_date: date | None = None
+    first_value_eur: int | None = None
+    delta_first_eur: int | None = None
+    percent_delta_previous_day: float | None = None
+    percent_delta_first: float | None = None
 
 
 class PlayerHistoryResponse(BaseModel):
