@@ -1,6 +1,6 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.5.3
+Infrastructure-Version: v0.5.4
 Dokumentationsstand: 2026-09-19
 
 ## Public API MVP
@@ -20,6 +20,11 @@ Verified endpoints:
 The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
 HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
+
+The AWS PowerShell scripts set `AWS_CLI_CONNECT_TIMEOUT=10` and
+`AWS_CLI_READ_TIMEOUT=30` and verify `aws sts get-caller-identity` before running.
+Expired credentials therefore fail fast instead of leaving an AWS CLI process
+waiting indefinitely.
 
 ### Emergency private switch
 
