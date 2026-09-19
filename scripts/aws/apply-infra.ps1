@@ -15,5 +15,5 @@ if (-not (Test-Path (Join-Path $terraformFullPath $VarFile))) {
     throw "Missing var file: $(Join-Path $terraformFullPath $VarFile)"
 }
 
-terraform -chdir=$terraformFullPath init
-terraform -chdir=$terraformFullPath apply -var-file=$VarFile
+terraform "-chdir=$terraformFullPath" init
+terraform "-chdir=$terraformFullPath" apply "-var-file=$VarFile"

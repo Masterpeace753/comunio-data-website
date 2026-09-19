@@ -196,9 +196,13 @@ resource "aws_security_group" "ecs" {
 resource "aws_security_group" "api_alb" {
   count = var.api_enabled ? 1 : 0
 
-  name        = "${local.name_prefix}-api-alb"
+  name_prefix = "${local.name_prefix}-api-alb-"
   description = "Internal ALB for the read-only Comunio API"
   vpc_id      = local.vpc_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   ingress {
     from_port   = 80
