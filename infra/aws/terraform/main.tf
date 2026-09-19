@@ -407,7 +407,7 @@ resource "aws_ecs_task_definition" "api_bootstrap" {
 resource "aws_lb" "api" {
   count              = var.api_enabled ? 1 : 0
   name               = "${local.name_prefix}-api"
-  internal           = false
+  internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.api_alb[0].id]
   subnets            = local.api_runtime_subnet_ids
@@ -733,7 +733,7 @@ resource "aws_cloudwatch_metric_alarm" "api_4xx_rate" {
 
   metric_query {
     id          = "rate"
-    expression  = "IF(requests > 0, errors / requests * 100, 0)"
+    expression  = "IF(requests >= ${var.api_4xx_min_requests}, errors / requests * 100, 0)"
     label       = "API target 4xx rate (%)"
     return_data = true
   }

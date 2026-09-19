@@ -1,6 +1,6 @@
 # AWS deployment baseline
 
-Infrastructure-Version: v0.5.2
+Infrastructure-Version: v0.5.3
 Dokumentationsstand: 2026-09-19
 
 ## Public API MVP
@@ -20,6 +20,14 @@ Verified endpoints:
 The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
 HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
+
+### Emergency private switch
+
+Because no frontend is currently deployed, the Terraform configuration now prepares
+the API ALB as an internal load balancer (`internal=true`). This change is not active
+in AWS until the pending `terraform apply` succeeds. The ingest scheduler and database
+are unaffected; ECS API tasks keep their current egress configuration until the later
+private-subnet/NAT or VPC-endpoint hardening step.
 
 ## API database access
 

@@ -105,6 +105,7 @@ flowchart LR
   - API-Tasks erhalten nur Datenbankzugriff und benoetigen keine Comunio-Credentials.
   - Die API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; das Ingest-Secret wird nicht geteilt.
   - Der aktuelle API-MVP ist als oeffentlicher HTTP-ALB mit `assign_public_ip=true` produktiv verifiziert; private Networking, HTTPS/ACM und WAF sind optionale spaetere Haertung.
+  - Da aktuell kein Frontend produktiv ist, wird als Notfallmassnahme ein interner API-ALB vorbereitet. Der Terraform-Stand ist bereit, die AWS-Umschaltung ist bis zum erfolgreichen `terraform apply` noch nicht aktiv.
 
 ### 3.3 Frontend Service (React auf Vercel)
 

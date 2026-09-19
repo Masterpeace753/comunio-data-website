@@ -228,6 +228,12 @@ variable "api_4xx_rate_threshold_percent" {
   default     = 25
 }
 
+variable "api_4xx_min_requests" {
+  description = "Minimum ALB target requests in a 5-minute period before the API 4xx rate is evaluated"
+  type        = number
+  default     = 10
+}
+
 variable "comunio_credentials_secret_arn" {
   description = "Secrets Manager ARN containing the Comunio username/password JSON"
   type        = string

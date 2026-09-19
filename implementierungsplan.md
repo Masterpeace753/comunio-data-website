@@ -148,16 +148,26 @@ Ziele:
 
 Arbeitspakete:
 
-- AP-14 Basis-Dashboard (Uebersicht, Team, Spieler)
+- AP-14 Basis-Dashboard (Uebersicht, Team, Spieler) mit serverseitigem API-Proxy/BFF
 - AP-15 Marktwert-Historie und Ranking-Ansichten
 - AP-16 Transfermarkt-Uebersicht
 - AP-17 UX-Verbesserungen, Filter, Sortierung
 - AP-18 Frontend-Tests und Monitoring-Einbindung
 
+Zugriffsmodell fuer das Frontend:
+
+- Browser rufen nur die Frontend-Routen auf; der serverseitige Proxy ruft die FastAPI auf.
+- Der Proxy authentifiziert sich gegen die API mit einem Secret aus den Hosting-Umgebungsvariablen.
+- Das Secret darf niemals in Client-JavaScript, HTML oder oeffentlichen Repositories auftauchen.
+- Direkte API-Aufrufe ohne Proxy-Authentifizierung werden mit `401` abgewiesen.
+- Der Proxy uebernimmt Timeout, Fehlerweitergabe, Rate-Limit-Budget und spaeter optionales Caching.
+- In der Uebergangsphase bleibt der API-ALB oeffentlich; als Folge-Haertung werden interne API-Subnets oder ein privater ALB vorgesehen.
+
 Ergebnis:
 
 - Nutzbare Web-App mit Kernfunktionalitaet
 - Gute Nutzbarkeit fuer taegliche Anwendung
+- Kein API-Secret im Browser und kein ungeschuetzter direkter Frontend-Zugriff auf die API
 
 ### Phase 5: Skalierung, Security, CI/CD und Release (Woche 18 bis 22)
 
@@ -252,13 +262,14 @@ Der aktuelle Stand liegt innerhalb von Phase 3:
 - AP-9 laeuft als EventBridge-Scheduler; fuenf aufeinanderfolgende erfolgreiche Tagesfenster sind nachgewiesen.
 - AP-10 ist mit `v0.4.4` veroeffentlicht; AP-11-DEV ist fuer `v0.5.0` umgesetzt, Backend-Tests sowie Terraform-Formatierung und -Validierung sind gruen.
 - AP-11-PROD ist als kostenorientierter HTTP-MVP ausgerollt: ECS-Service hinter oeffentlichem ALB, `assign_public_ip=true`, Vercel-CORS und separater Read-only-DB-User/Secret. HTTPS/ACM, WAF und private API-Subnets bleiben spaetere Haertung.
+- Das oeffentliche API-ALB ist bis zur Frontend-Integration ein bewusst befristeter MVP-Zustand. Das Zielmodell ist ein serverseitiger Frontend-Proxy mit API-Authentifizierung; CORS allein gilt nicht als Zugriffsschutz.
 
 Naechste Schritte in verbindlicher Reihenfolge:
 
 1. AP-12 ist umgesetzt; die PostgreSQL- und Vertragsintegration wird in AP-13 als Regression abgesichert.
 1. AP-13 ist implementiert: PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, reproduzierbares Benchmark-Skript und kostenguenstige native ALB-CloudWatch-Alarme sind vorhanden. Eine AWS-Staging-Baseline bleibt optional.
 1. Optionales Hardening nach dem MVP: AP-10a.5 mit NAT-/ECR-Endpoint-Pfad, privatem ECS-Task ohne Public IP und DB-Reconnect-Nachweis.
-1. Danach optional AP-11-PROD weiter haerten: HTTPS/ACM, WAF und private API-Subnets.
+1. AP-13.a als Zwischenpaket fuer serverseitigen Frontend-Proxy und API-Authentifizierung umsetzen; danach mit AP-14 in das Frontend integrieren und optional AP-11-PROD weiter haerten: HTTPS/ACM, WAF und private API-Subnets.
 
 ### AP-12 Implementierungsumfang und Definition of Done
 
@@ -302,6 +313,24 @@ Definition of Done:
 - CloudWatch-Alarme nutzen 5-Minuten-Perioden und keine zusaetzliche Staging-Infrastruktur. Ein SNS-Topic bleibt optional; dadurch bleibt der MVP-Kostenpfad niedrig.
 - Die AWS-Staging-Baseline wird erst vor einem groesseren Release oder bei Skalierungsbedarf aktiviert, weil sie zusaetzliche ECS-, ALB- und RDS-Kosten erzeugt.
 
+### AP-13.a Zugriffsschutz und serverseitiger Frontend-Proxy
+
+AP-13.a wird nach dem abgeschlossenen API-MVP und vor der Frontend-Produktivnutzung umgesetzt:
+
+- Serverseitiger Frontend-Proxy/BFF als einziger geplanter Zugriffspfad des Browsers.
+- Separates Proxy-Secret in den Server-Umgebungsvariablen; kein Secret in Client-JavaScript, HTML oder Repositorys.
+- FastAPI weist direkte Requests ohne gueltige Proxy-Authentifizierung mit `401` ab.
+- `/docs` und vergleichbare Diagnose-Endpunkte werden in Production deaktiviert oder geschuetzt.
+- Das aktuelle oeffentliche ALB bleibt bis zur Umsetzung von AP-13.a ein bewusst befristeter MVP-Zustand.
+- Als Folgeausbau werden interner ALB, private API-Subnets, kontrollierter Egress und optional WAF bewertet.
+
+Definition of Done:
+
+- Browserzugriff auf die AWS-API ohne gueltige Authentifizierung ist nicht moeglich.
+- Der Proxy-Token ist in keiner Browserantwort und keinem gebauten Client-Bundle enthalten.
+- Proxy-, API- und Fehlerpfadtests decken `401`, Timeout, Weitergabe von `4xx`/`5xx` und CORS-Verhalten ab.
+- Eine Kostenentscheidung fuer Vercel-Proxy, ECS-Proxy oder privaten AWS-Pfad ist dokumentiert.
+
 ### AP-11 Umsetzungsumfang und Definition of Done
 
 AP-11 wird in folgende Teilaufgaben zerlegt:
@@ -320,13 +349,34 @@ AP-11 gilt technisch als erledigt, wenn alle vereinbarten read-only-Endpunkte ve
 
 Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu treffen oder zu bestaetigen:
 
-- Authentifizierung: Fuer das kostenorientierte MVP ist die API bewusst oeffentlich lesbar und read-only; JWT/OAuth2 wird erst bei privaten oder benutzerbezogenen Daten verpflichtend.
+- Authentifizierung: Der aktuelle MVP ist bewusst oeffentlich lesbar und read-only. Vor der Frontend-Produktivnutzung wird mindestens ein serverseitig verwaltetes Proxy-Secret eingefuehrt; JWT/OAuth2 bleibt die Option fuer benutzerbezogene oder personalisierte Daten.
 - Frontend-Origin: Vercel-Produktions-Origin ueber `API_ALLOWED_ORIGINS` konfigurieren; keine Wildcard-Origin in Production.
+- Frontend-Zugriff: Das Browser-Frontend spricht den API-Proxy an, nicht die AWS-API direkt. Der Proxy darf keine geheimen Header an den Browser weiterreichen.
 - Datenbankzugriff: API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; Ingest bleibt schreibberechtigt.
 - Scheduler: EventBridge in Produktion, lokale Variante fuer Entwicklung.
 - Secrets: AWS Secrets Manager in Produktion, keine Secrets im Repository.
 - Skalierung: Ein API-Task fuer das kostenorientierte MVP; API Pod Min/Max, Connection-Pool und Autoscaling-Grenzen sind spaetere Production-Entscheidungen.
 - Deployment: Rolling Deployments und Rollback-Prozess verbindlich dokumentieren.
+
+### 10.1 Serverseitiger Frontend-Proxy und Kosten
+
+Zielarchitektur:
+
+```text
+Browser -> Frontend-Proxy/BFF -> API mit Proxy-Authentifizierung -> PostgreSQL
+```
+
+- Bevorzugte MVP-Variante: Proxy als serverseitige Route des kuenftigen Frontends, zum Beispiel Next.js auf Vercel. Der API-Proxy-Token wird als Server-Environment-Secret hinterlegt.
+- Strengeres Zielbild: Frontend-Proxy und API innerhalb AWS; API-ALB intern, Security Group nur vom Proxy, kein direkter Internetzugriff auf die API.
+- Ein Token im Browser oder eine reine Origin-/Referer-Pruefung ist kein ausreichender Zugriffsschutz, weil beides nachgebaut werden kann.
+- `/docs` und vergleichbare Diagnose-Endpunkte werden in Production deaktiviert oder ebenfalls authentifiziert.
+
+Kostenannahme fuer die Planung:
+
+- Vercel-Proxy auf einem bestehenden Frontend: meist keine oder geringe Zusatzkosten, abhaengig von Function-Aufrufen und Transfer.
+- Separater kleiner ECS-Fargate-Proxy: grob 10-20 EUR/Monat plus moegliche Transferkosten.
+- Privater API-Pfad mit API Gateway, WAF oder zusaetzlichem Load Balancer: grob 5-30 EUR/Monat bei geringem Traffic, je nach Nutzung und WAF-Regeln.
+- Vor einer privaten Netzwerk-Haertung ist ein Kosten- und Verbindungsnachweis erforderlich; das oeffentliche ALB-MVP bleibt bis dahin der dokumentierte Zwischenstand.
 
 ## 11. Messbare Akzeptanzkriterien je Meilenstein
 
@@ -426,6 +476,8 @@ Grundlage ist der vollstaendige Review in `docs/code-review/2026-08-25-full-proj
 #### P3: Geplante Härtung
 
 - Fargate-Tasks in private Subnets mit kontrolliertem Egress betreiben; `assign_public_ip=false` erst nach validiertem NAT-/VPC-Endpoint-Pfad aktivieren.
+- AP-13.a: Vor der Frontend-Produktivnutzung API-Authentifizierung fuer den serverseitigen Frontend-Proxy einfuehren; direkte unauthentifizierte API-Aufrufe muessen mit `401` abgewiesen werden.
+- Nachweis erbringen, dass der Proxy-Token nicht im Browser ausgeliefert wird; `/docs` in Production deaktivieren oder schuetzen.
 - CI-Security-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning, Dependency-Scanning und Container-Scanning einrichten.
 - Abnahmekriterium: Keine offenen Critical/High Findings und reproduzierbarer Deploy-Block bei Gate-Verletzung.
 
@@ -623,8 +675,8 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 
 **Skalierungs-Roadmap nach AP-10a:**
 
-- **Phase A (jetzt):** Single-AZ Ingest, single Fargate task daily, Local/S3 state, no API yet.
-- **Phase B (Q4):** API Layer (FastAPI) mit read-only Endpoints, Query Caching, rate-limiting.
+- **Phase A (jetzt):** Single-AZ Ingest, single Fargate task daily, Local/S3 state und kostenorientierter oeffentlicher API-MVP.
+- **Phase B (Q4):** Frontend-MVP mit serverseitigem API-Proxy, Proxy-Authentifizierung, Query Caching und Rate-Limiting; danach private API-Netzwerkpfade pruefen.
 - **Phase C (Q1 2027):** Multi-AZ Ingest, RDS replicas, CDN für Frontend, Event-driven backpressure (SQS DLQ → Lambda retry).
 
 ### 20.5 Software Engineer Agent v1 (Execution Summary)

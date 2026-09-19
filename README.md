@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.5.2 (Terraform S3 lockfile deprecation fix)
+Release-Version: v0.5.3 (private API ALB emergency hardening)
 Dokumentationsstand: 2026-09-19
 
 ## Repository-Beschreibung
@@ -35,6 +35,8 @@ Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot m
 Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). AP-11 ist als kostenorientiertes HTTP-MVP verifiziert. AP-12 ist als read-only-Delta-Projektion umgesetzt. AP-13 ist mit PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, Benchmark-Skript und nativen ALB-CloudWatch-Alarmen umgesetzt.
 
 Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Der API-MVP ist oeffentlich ueber HTTP erreichbar und verwendet einen separaten Read-only-DB-User/Secret sowie Vercel-CORS. HTTPS/ACM, WAF und private API-Subnets bleiben bewusst nachgelagerte Haertung.
+
+Als Notfallmassnahme fuer die Zeit ohne Frontend ist der Terraform-Schalter fuer einen internen API-ALB vorbereitet. Der private Zustand wird erst mit dem ausstehenden `terraform apply` aktiv; bis dahin bleibt der zuletzt ausgerollte oeffentliche API-MVP unveraendert.
 
 ## Architektur und Planung
 
