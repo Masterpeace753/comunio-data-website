@@ -1,0 +1,9 @@
+# Accepted exception: the optional Terraform bootstrap state bucket uses SSE-S3
+# (AES256). Migrating it to a customer-managed KMS key requires a separate,
+# approved AWS cost and key-policy change. Keep all other IaC findings blocking.
+AWS-0132
+
+# Accepted MVP exception: ECS tasks require outbound internet access for the
+# Comunio API and AWS endpoints. Private egress via NAT/VPC endpoints is a
+# documented hardening step and must be implemented before a stricter gate.
+AWS-0104

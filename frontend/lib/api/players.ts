@@ -1,0 +1,5 @@
+import { apiFetch } from "./client";
+import type { Page, PlayerDetail, PlayerHistoryResponse, PlayerSummary, Position } from "./types";
+export const getPlayers = (params: { limit?: number; offset?: number; team_id?: string; position?: Position; search?: string } = {}) => apiFetch<Page<PlayerSummary>>(`/api/v1/players?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== "") as [string, string][]).toString()}`);
+export const getPlayer = (id: string) => apiFetch<PlayerDetail>(`/api/v1/players/${id}`);
+export const getPlayerHistory = (id: string, params: { limit?: number; from_date?: string; to_date?: string } = {}) => apiFetch<PlayerHistoryResponse>(`/api/v1/players/${id}/history?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined) as [string, string][]).toString()}`);

@@ -1,7 +1,7 @@
 # Comunio Data Website
 
-Release-Version: v0.5.4 (AWS CLI timeout and authentication preflight)
-Dokumentationsstand: 2026-09-19
+Release-Version: v0.6.0 (Frontend MVP, CI Security Gates and Vercel Go-live preparation)
+Dokumentationsstand: 2026-09-20
 
 ## Repository-Beschreibung
 
@@ -30,7 +30,7 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Die read-only FastAPI ist aktuell deaktiviert, solange kein Frontend vorhanden ist; Ingest-Scheduler, Datenbank und Snapshot-Pipeline bleiben aktiv.
+Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Das Frontend-v1 ist unter `frontend/` als Next.js-App mit serverseitigem Vercel-Proxy, typisierter API-Schicht, Dashboard, Spieler-, Team- und Transfermarktseiten umgesetzt. Die FastAPI bleibt bis zur Umsetzung von AP-13.a und der produktiven API-Netzwerk-/HTTPS-Konfiguration deaktiviert; Ingest-Scheduler, Datenbank und Snapshot-Pipeline bleiben aktiv.
 
 Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). AP-11 ist als kostenorientiertes HTTP-MVP verifiziert. AP-12 ist als read-only-Delta-Projektion umgesetzt. AP-13 ist mit PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, Benchmark-Skript und nativen ALB-CloudWatch-Alarmen umgesetzt.
 
@@ -49,6 +49,7 @@ Als Notfallmassnahme fuer die Zeit ohne Frontend wird die API mit `api_enabled =
 ## Projektstruktur
 
 - [backend](backend): Ingest, Migrationen, Operability-Runbooks
+- [frontend](frontend): Next.js-Dashboard und serverseitiger API-Proxy
 - [agents](agents): hinterlegte Agent-Profile
 - [architecture.md](architecture.md): technische Zielarchitektur
 - [data_model.md](data_model.md): fachliches und technisches Datenmodell
@@ -119,7 +120,9 @@ Abgeschlossene Basis-Gates:
 - G2 Migrations-Idempotenz
 - G3 Schema-Integritaet
 
-Die AWS-Production-API ist bewusst ein kostenguenstiges MVP mit oeffentlichem HTTP-ALB, `assign_public_ip=true` und einem API-Task. HTTPS/ACM, WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben optionale spaetere Haertung. Native ALB-Metriken alarmieren API-P95 sowie 4xx-/5xx-Raten; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
+Die AWS-Production-API ist als kostenguenstiges MVP mit einem API-Task und nativen ALB-Metriken vorbereitet. Vor dem Frontend-Livegang muessen AP-13.a, ein fuer Vercel erreichbarer HTTPS-API-Endpunkt sowie die produktive API-Aktivierung abgeschlossen werden. WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben dokumentierte spaetere Haertungen; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
+
+Das Frontend nutzt Next.js 16.3.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`; die CI reproduziert diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans.
 
 ## Requirements-Status
 

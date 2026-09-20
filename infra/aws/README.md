@@ -34,6 +34,13 @@ Verified endpoints:
 The former MVP used `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
 HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
+The MVP cost decision is to use the Vercel server-side proxy instead of a separate
+ECS/Fargate proxy or API Gateway. AWS WAF is a P2 hardening step, not an MVP
+go-live gate. Additional WAF, NAT, private-ALB, and SNS costs are deferred until
+traffic, alarm data, or security requirements justify the change. Before go-live,
+the API ALB must nevertheless be reachable from Vercel; an internal ALB requires
+a separate private network path and cannot be called directly by a Vercel Hobby
+Function.
 
 The AWS PowerShell scripts set `AWS_CLI_CONNECT_TIMEOUT=10` and
 `AWS_CLI_READ_TIMEOUT=30` and verify `aws sts get-caller-identity` before running.

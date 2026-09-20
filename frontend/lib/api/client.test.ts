@@ -1,0 +1,3 @@
+import { describe, expect, it, vi } from "vitest";
+import { ApiError, apiFetch } from "./client";
+describe("api client", () => { it("maps a backend 503 to a safe user-facing error", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: "api_database_unavailable" }), { status: 503 }))); await expect(apiFetch("/api/v1/players")).rejects.toMatchObject({ status: 503, message: "Daten aktuell nicht verfuegbar." }); vi.unstubAllGlobals(); }); it("returns typed JSON on success", async () => { vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ total: 0 }), { status: 200 }))); await expect(apiFetch<{ total: number }>("/api/v1/players")).resolves.toEqual({ total: 0 }); vi.unstubAllGlobals(); }); });

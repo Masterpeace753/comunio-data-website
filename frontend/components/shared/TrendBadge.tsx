@@ -1,0 +1,3 @@
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { euro, percent } from "@/lib/format";
+export function TrendBadge({ value, rate }: { value: number | null; rate?: number | null }) { const positive = (value ?? 0) > 0; const neutral = value == null || value === 0; const Icon = neutral ? Minus : positive ? ArrowUpRight : ArrowDownRight; return <span className={`inline-flex items-center gap-1 text-xs font-semibold ${neutral ? "text-muted" : positive ? "text-success" : "text-danger"}`}><Icon size={14}/>{value == null ? "keine Vergleichsdaten" : `${euro(value)}${rate == null ? "" : ` · ${percent(rate)}`}`}</span>; }

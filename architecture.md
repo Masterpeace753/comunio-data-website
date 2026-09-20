@@ -135,6 +135,8 @@ flowchart LR
   - API Fehlerquote ueber Schwellwert
 - Kostenentscheidung fuer den API-MVP: API-P95, 4xx- und 5xx-Raten werden ueber die bereits vorhandenen nativen ALB-Metriken in CloudWatch alarmiert. Es werden keine hochdimensionalen Custom Metrics und kein zusaetzlicher Monitoring-Service eingefuehrt.
 
+**Kostenentscheidung fuer den Frontend-Proxy (2026-09-20):** Der MVP nutzt den serverseitigen Next.js-Proxy auf Vercel vor dem AWS-API-ALB. Ein separater ECS-/Fargate-Proxy, API Gateway und eine verpflichtende WAF werden aus Kostengruenden nicht als MVP-Bausteine betrieben. AWS WAF wird als P2-Haertung nach dem MVP bewertet; Ausloeser sind messbare Last, Angriffsmuster, Compliance-Anforderungen oder wiederholte API-P95-/Fehleralarme. Der AWS-API-ALB bleibt bis zur spaeteren Netzwerk-Haertung der dokumentierte Zwischenstand; variable Vercel-, ALB- und Transferkosten werden ueber die vorhandenen Alarme und das Release-Review beobachtet. Eine Neubewertung erfolgt bei messbarer Last, Sicherheits-/Compliance-Vorgabe oder wiederholten API-P95-/Fehleralarmen. Vor dem Go-live muss die Erreichbarkeit des API-Endpunkts aus Vercel geklaert werden; ein `internal = true` gesetzter ALB ist ohne private Netzwerkanbindung kein gueltiges Ziel fuer den Vercel-Proxy.
+
 ## 4. Datenfluss
 
 1. Scheduler startet Ingest-Run.
