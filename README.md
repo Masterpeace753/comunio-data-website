@@ -1,6 +1,6 @@
 # Comunio Data Website
 
-Release-Version: v0.6.0 (Frontend MVP, CI Security Gates and Vercel Go-live preparation)
+Release-Version: v0.6.1 (Authenticated API Go-live and Vercel Proxy Integration)
 Dokumentationsstand: 2026-09-20
 
 ## Repository-Beschreibung

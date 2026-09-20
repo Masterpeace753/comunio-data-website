@@ -5,10 +5,9 @@ Dokumentationsstand: 2026-09-19
 
 ## API deployment status
 
-The read-only FastAPI service is currently disabled because no frontend is deployed.
-With `api_enabled = false`, Terraform removes the API ECS service, ALB, target group,
-API security groups, API bootstrap task, and API CloudWatch alarms. The ingest
-scheduler, database, and snapshot pipeline remain active.
+The read-only FastAPI service is deployed as an authenticated ECS service behind an
+internet-facing HTTP ALB for the Vercel server-side proxy. The ingest scheduler,
+database, and snapshot pipeline remain active.
 
 Re-enable the API only when the frontend integration starts:
 
@@ -16,13 +15,14 @@ Re-enable the API only when the frontend integration starts:
 api_enabled = true
 ```
 
-At that point, apply Terraform first and then implement AP-13.a server-side proxy
-authentication before exposing API data to the browser.
+The API requires the server-side proxy bearer token. Configure the same token as
+`API_PROXY_SECRET` in Vercel and as the AWS Secrets Manager secret referenced by
+`api_proxy_secret_arn`.
 
-The last deployed API endpoint was:
+The deployed API endpoint is:
 
 ```text
-http://comunio-prod-api-1645234553.eu-central-1.elb.amazonaws.com
+http://comunio-prod-api-1413412868.eu-central-1.elb.amazonaws.com
 ```
 
 Verified endpoints:
@@ -31,9 +31,10 @@ Verified endpoints:
 - `/health/ready` -> HTTP 200 with database connectivity
 - `/api/v1/players?limit=1` -> HTTP 200
 
-The former MVP used `assign_public_ip=true`, an HTTP listener, Vercel CORS for
-`https://comunio-data-website.vercel.app`, and a separate PostgreSQL read-only user/secret.
-HTTPS/ACM, WAF, and private API subnets are intentionally deferred hardening steps.
+The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
+`https://comunio-data-website.vercel.app`, a mandatory proxy bearer token, and a
+separate PostgreSQL read-only user/secret. HTTPS/ACM, WAF, and private API subnets
+remain hardening steps before handling sensitive or commercial traffic.
 The MVP cost decision is to use the Vercel server-side proxy instead of a separate
 ECS/Fargate proxy or API Gateway. AWS WAF is a P2 hardening step, not an MVP
 go-live gate. Additional WAF, NAT, private-ALB, and SNS costs are deferred until
