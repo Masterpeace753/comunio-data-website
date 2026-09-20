@@ -115,16 +115,20 @@ resource "aws_iam_role_policy_attachment" "execution_managed" {
 }
 
 data "aws_iam_policy_document" "execution_secrets" {
-  count = local.resolved_database_url_secret_arn != null || (var.api_enabled && var.api_database_url_secret_arn != null) ? 1 : 0
+  count = local.resolved_database_url_secret_arn != null || (var.api_enabled && (var.api_database_url_secret_arn != null || var.api_proxy_secret_arn != null)) ? 1 : 0
 
   statement {
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = compact([local.resolved_database_url_secret_arn, var.api_enabled ? var.api_database_url_secret_arn : null])
+    actions = ["secretsmanager:GetSecretValue"]
+    resources = compact([
+      local.resolved_database_url_secret_arn,
+      var.api_enabled ? var.api_database_url_secret_arn : null,
+      var.api_enabled ? var.api_proxy_secret_arn : null,
+    ])
   }
 }
 
 resource "aws_iam_role_policy" "execution_secrets" {
-  count = local.resolved_database_url_secret_arn == null ? 0 : 1
+  count = local.resolved_database_url_secret_arn != null || (var.api_enabled && (var.api_database_url_secret_arn != null || var.api_proxy_secret_arn != null)) ? 1 : 0
 
   name   = "${local.name_prefix}-execution-secrets"
   role   = aws_iam_role.execution.id
@@ -250,6 +254,11 @@ resource "aws_ecs_task_definition" "api" {
     }
 
     precondition {
+      condition     = var.api_proxy_secret_arn != null
+      error_message = "The public API requires a server-side proxy secret ARN."
+    }
+
+    precondition {
       condition     = length(local.api_runtime_subnet_ids) >= 2
       error_message = "The public API ALB requires at least two public subnets in different availability zones."
     }
@@ -278,6 +287,10 @@ resource "aws_ecs_task_definition" "api" {
         {
           name      = "DATABASE_URL"
           valueFrom = var.api_database_url_secret_arn
+        },
+        {
+          name      = "API_PROXY_SECRET"
+          valueFrom = var.api_proxy_secret_arn
         },
       ]
       portMappings = [
@@ -407,7 +420,7 @@ resource "aws_ecs_task_definition" "api_bootstrap" {
 resource "aws_lb" "api" {
   count              = var.api_enabled ? 1 : 0
   name               = "${local.name_prefix}-api"
-  internal           = true
+  internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.api_alb[0].id]
   subnets            = local.api_runtime_subnet_ids

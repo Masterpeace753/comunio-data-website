@@ -146,7 +146,7 @@ Ziele:
 
 - Minimal-Frontend und danach Komfort-Ausbau
 
-Stand 2026-09-20: Das Frontend-v1 ist unter `frontend/` implementiert und in CI mit `npm ci`, `npm audit --audit-level=moderate`, Tests, ESLint und Production-Build abgesichert. Vercel-Konfiguration und serverseitiger Next.js-Proxy sind vorbereitet; AP-13.a (Secret-Validierung in der FastAPI) bleibt vor dem Produktions-Livegang erforderlich.
+Stand 2026-09-20: Das Frontend-v1 ist unter `frontend/` implementiert und in CI mit `npm ci`, `npm audit --audit-level=moderate`, Tests, ESLint und Production-Build abgesichert. Vercel-Konfiguration und serverseitiger Next.js-Proxy sind vorbereitet; AP-13.a (Secret-Validierung in der FastAPI) ist umgesetzt. HTTPS/ACM und die produktive Vercel-Umgebungsvariablen bleiben vor dem sicheren Frontend-Livegang zu verifizieren.
 
 Arbeitspakete:
 
@@ -271,7 +271,7 @@ Naechste Schritte in verbindlicher Reihenfolge:
 1. AP-12 ist umgesetzt; die PostgreSQL- und Vertragsintegration wird in AP-13 als Regression abgesichert.
 1. AP-13 ist implementiert: PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, reproduzierbares Benchmark-Skript und kostenguenstige native ALB-CloudWatch-Alarme sind vorhanden. Eine AWS-Staging-Baseline bleibt optional.
 1. Optionales Hardening nach dem MVP: AP-10a.5 mit NAT-/ECR-Endpoint-Pfad, privatem ECS-Task ohne Public IP und DB-Reconnect-Nachweis.
-1. AP-13.a als Zwischenpaket fuer serverseitigen Frontend-Proxy und API-Authentifizierung umsetzen; danach mit AP-14 in das Frontend integrieren und optional AP-11-PROD weiter haerten: HTTPS/ACM, WAF und private API-Subnets.
+1. AP-13.a ist umgesetzt und die API mit Proxy-Authentifizierung ausgerollt; als naechster Schritt werden die Vercel-Umgebungsvariablen gesetzt und der Proxy-End-to-End verifiziert. Danach optional AP-11-PROD weiter haerten: HTTPS/ACM, WAF und private API-Subnets.
 
 ### AP-12 Implementierungsumfang und Definition of Done
 

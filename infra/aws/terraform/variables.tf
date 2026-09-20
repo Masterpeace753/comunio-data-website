@@ -169,6 +169,12 @@ variable "api_database_url_secret_arn" {
   default     = null
 }
 
+variable "api_proxy_secret_arn" {
+  description = "Secrets Manager ARN containing the server-side API proxy bearer token"
+  type        = string
+  default     = null
+}
+
 variable "api_enabled" {
   description = "Deploy the public read-only FastAPI ECS service and ALB"
   type        = bool

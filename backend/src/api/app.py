@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hmac
 import os
 from typing import Annotated
 
@@ -25,7 +26,19 @@ from .schemas import (
     TransferMarketResponse,
 )
 
-app = FastAPI(title="Comunio Data API", version="1.0.0")
+app_env = os.getenv("APP_ENV", "dev").strip().lower()
+is_production = app_env in {"prod", "production"}
+api_proxy_secret = os.getenv("API_PROXY_SECRET", "")
+if is_production and not api_proxy_secret:
+    raise RuntimeError("Production requires API_PROXY_SECRET")
+
+app = FastAPI(
+    title="Comunio Data API",
+    version="1.0.0",
+    docs_url=None if is_production else "/docs",
+    redoc_url=None if is_production else "/redoc",
+    openapi_url=None if is_production else "/openapi.json",
+)
 Db = Annotated[PgConnection, Depends(get_db_connection)]
 
 allowed_origins = [
@@ -38,8 +51,18 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["GET"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def require_api_proxy_authentication(request: Request, call_next):
+    if request.url.path.startswith("/api/v1/"):
+        authorization = request.headers.get("Authorization", "")
+        scheme, _, token = authorization.partition(" ")
+        if api_proxy_secret and (scheme.lower() != "bearer" or not hmac.compare_digest(token, api_proxy_secret)):
+            return JSONResponse(status_code=401, content={"code": "api_unauthorized", "message": "Authentication required."})
+    return await call_next(request)
 
 
 @app.exception_handler(RepositoryUnavailableError)
