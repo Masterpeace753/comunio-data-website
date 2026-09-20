@@ -1,0 +1,3 @@
+import { apiFetch } from "./client";
+import type { TransferMarketResponse } from "./types";
+export const getTransfermarket = (params: { limit?: number; offset?: number; listed?: boolean; snapshot_date?: string } = {}) => apiFetch<TransferMarketResponse>(`/api/v1/transfermarket?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined) as [string, string][]).toString()}`);

@@ -27,11 +27,11 @@ build/
 
 # Node / React
 node_modules/
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 vite.svg
 coverage/
+.next/
 dist-frontend/
 build-frontend/
 

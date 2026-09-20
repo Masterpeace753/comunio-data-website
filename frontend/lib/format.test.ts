@@ -1,0 +1,3 @@
+import { describe, expect, it } from "vitest";
+import { dateLabel, euro, percent } from "./format";
+describe("format helpers", () => { it("formats nullable euros without turning null into zero", () => { expect(euro(null)).toBe("-"); expect(euro(1250000)).toContain("1.250.000"); }); it("formats dates without timezone drift", () => expect(dateLabel("2026-09-20")).toBe("20.09.2026")); it("formats positive and nullable percentages", () => { expect(percent(12.5)).toBe("+12.5 %"); expect(percent(null)).toBe("-"); }); });

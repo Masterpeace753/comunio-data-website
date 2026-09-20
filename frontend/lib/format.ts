@@ -1,0 +1,4 @@
+export const euro = (value: number | null | undefined) => value == null ? "-" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value);
+export const compact = (value: number | null | undefined) => value == null ? "-" : new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+export const dateLabel = (value: string | null | undefined) => value ? new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${value.slice(0, 10)}T12:00:00`)) : "-";
+export const percent = (value: number | null | undefined) => value == null ? "-" : `${value > 0 ? "+" : ""}${value.toFixed(1)} %`;

@@ -146,6 +146,8 @@ Ziele:
 
 - Minimal-Frontend und danach Komfort-Ausbau
 
+Stand 2026-09-20: Das Frontend-v1 ist unter `frontend/` implementiert und in CI mit `npm ci`, `npm audit --audit-level=moderate`, Tests, ESLint und Production-Build abgesichert. Vercel-Konfiguration und serverseitiger Next.js-Proxy sind vorbereitet; AP-13.a (Secret-Validierung in der FastAPI) bleibt vor dem Produktions-Livegang erforderlich.
+
 Arbeitspakete:
 
 - AP-14 Basis-Dashboard (Uebersicht, Team, Spieler) mit serverseitigem API-Proxy/BFF
@@ -377,6 +379,21 @@ Kostenannahme fuer die Planung:
 - Separater kleiner ECS-Fargate-Proxy: grob 10-20 EUR/Monat plus moegliche Transferkosten.
 - Privater API-Pfad mit API Gateway, WAF oder zusaetzlichem Load Balancer: grob 5-30 EUR/Monat bei geringem Traffic, je nach Nutzung und WAF-Regeln.
 - Vor einer privaten Netzwerk-Haertung ist ein Kosten- und Verbindungsnachweis erforderlich; das oeffentliche ALB-MVP bleibt bis dahin der dokumentierte Zwischenstand.
+
+**Architekturentscheidung (2026-09-20):** Fuer den MVP wird der serverseitige Next.js-Proxy auf Vercel vor dem AWS-API-ALB verwendet. Ein AWS-interner API-Proxy beziehungsweise interner ALB ist kein offener Auswahlpunkt mehr, sondern ein spaeteres Haertungsziel. Offen bleiben nur die Umsetzung von AP-13.a (Proxy-Secret-Validierung in der FastAPI), HTTPS/ACM fuer den API-Endpunkt und die produktive Verifikation des Proxy-Pfads.
+
+**Kostenentscheidung (2026-09-20):** Der MVP verwendet keinen separaten ECS-/Fargate-Proxy, kein zusaetzliches API Gateway und keine verpflichtende WAF. Der serverseitige Proxy laeuft als Vercel Function im Frontend. Im Vercel-Hobbyplan ist das innerhalb der Kontingente enthalten: aktuell 1 Mio. Function-Aufrufe/Monat, 4 Stunden aktive CPU und 360 GB-Stunden reservierter Speicher pro Monat; zusaetzlich gelten Transferlimits. Das Hobby-Angebot ist laut Vercel fuer persoenliche, nicht-kommerzielle Projekte vorgesehen. Bei kommerziellem Betrieb oder Ueberschreitung der Kontingente ist der Vercel-Pro-Plan beziehungsweise eine alternative Hosting-Entscheidung erforderlich. Der bestehende AWS-API-ALB bleibt der kostenorientierte Zwischenstand. SNS-Benachrichtigungen fuer CloudWatch-Alarme bleiben optional, bis ein verbindlicher Alarmempfaenger feststeht.
+
+- **MVP-Budgetannahme:** kein eigener Proxy-Service, keine zusaetzliche Gateway-/WAF-Grundgebuehr; fuer ein persoenliches Projekt bleibt der Vercel-Hobbyplan innerhalb seiner Limits kostenfrei. Variable Vercel-, ALB-, Transfer- und Alarmkosten werden ueber die bestehenden AWS-/Vercel-Budgets beobachtet.
+- **Bewusst nicht im MVP enthalten:** separater ECS-Proxy (geschaetzt 10-20 EUR/Monat), privater API-Pfad mit API Gateway/WAF (geschaetzt 5-30 EUR/Monat plus Nutzung), NAT Gateway und Multi-AZ-Haertung.
+- **Neubewertung ausloesen bei:** API-P95-/Fehler-Alarmen, steigender Traffic- oder Vercel-Function-Nutzung, Sicherheitsanforderung fuer private API-Erreichbarkeit oder verbindlicher WAF-/Compliance-Vorgabe.
+- **Voraussetzung:** Die Entscheidung gilt nur fuer den MVP mit AP-13.a-Proxy-Authentifizierung, HTTPS/ACM und aktivierter Kosten-/Alarmueberwachung.
+
+**WAF-Entscheidung (2026-09-20):** AWS WAF wird nicht als Go-live-Gate des kostenorientierten MVP eingefuehrt, sondern als priorisierte P2-Haertung nach dem Livegang. Der MVP ist eine read-only API mit AP-13.a-Proxy-Secret, HTTPS/ACM, begrenzten GET-Requests, FastAPI-Validierung, CloudWatch-Alarmen und separater Read-only-Datenbankrolle. Ein WAF wird bei erhoehtem Traffic, wiederholten Angriffsmustern, Compliance-Vorgabe oder wiederholten 4xx-/5xx-Anomalien nachgeruestet.
+
+- **Kosten:** Fuer AWS WAF an einem ALB sind typischerweise eine monatliche Web-ACL-Gebuehr, Gebuehren je Regel und nutzungsabhaengige Request-Kosten einzuplanen; die exakten Preise sind region- und preisstandsabhaengig. Fuer den MVP wird deshalb keine feste WAF-Grundgebuehr akzeptiert.
+- **Umsetzungsaufwand:** Terraform-Ressourcen fuer Web ACL, Managed/Core-Regeln, Rate-Limit-Regel, ALB-Assoziation, Logging und Tests; grob ein halber bis ein Arbeitstag fuer eine einfache Baseline, zusaetzlich Tuning nach echten Requests.
+- **Go-live-Voraussetzung:** Vor Aktivierung des Vercel-Proxys muss der API-Endpunkt fuer Vercel erreichbar sein. Der aktuelle Terraform-Stand setzt den API-ALB auf `internal = true`; das ist mit einem direkten Vercel-Hobby-Proxy nicht kompatibel und muss vor dem Go-live entweder auf einen oeffentlichen HTTPS-ALB mit restriktivem Zugang oder auf einen privaten, netzwerkseitig angebundenen Proxy-Pfad geaendert und verifiziert werden.
 
 ## 11. Messbare Akzeptanzkriterien je Meilenstein
 

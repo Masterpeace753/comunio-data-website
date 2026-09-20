@@ -1,0 +1,4 @@
+import Link from "next/link";
+export function EmptyState({ title, text }: { title: string; text: string }) { return <div className="panel flex min-h-48 flex-col items-center justify-center p-8 text-center"><p className="text-lg font-semibold">{title}</p><p className="mt-2 max-w-md text-sm text-secondary">{text}</p></div>; }
+export function ErrorState({ text = "Die Daten sind aktuell nicht verfuegbar." }: { text?: string }) { return <div className="panel flex min-h-48 flex-col items-center justify-center p-8 text-center"><p className="text-lg font-semibold">Verbindung unterbrochen</p><p className="mt-2 text-sm text-secondary">{text}</p><Link href="/" className="button mt-5">Erneut versuchen</Link></div>; }
+export function Skeleton({ className = "h-5 w-full" }: { className?: string }) { return <div className={`animate-pulse rounded-lg bg-elevated ${className}`} />; }
