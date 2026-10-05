@@ -1,0 +1,2 @@
+# Fake test-only JWT secret in an earlier commit; replaced by a runtime-generated value.
+ecc0456ea3dc78b88746ee59e456253057ac0465:backend/tests/test_api.py:generic-api-key:15

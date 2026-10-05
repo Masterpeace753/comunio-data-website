@@ -7,7 +7,7 @@ def _schema_definitions(openapi: dict) -> dict:
     return openapi.get("components", {}).get("schemas", {})
 
 
-def test_openapi_exposes_only_versioned_read_routes() -> None:
+def test_openapi_exposes_read_routes_and_authentication_contract() -> None:
     paths = api_app.app.openapi()["paths"]
     expected_paths = {
         "/health/live",
@@ -18,11 +18,19 @@ def test_openapi_exposes_only_versioned_read_routes() -> None:
         "/api/v1/teams",
         "/api/v1/teams/{team_id}",
         "/api/v1/transfermarket",
+        "/auth/login",
+        "/auth/logout",
+        "/auth/me",
     }
 
     assert set(paths) == expected_paths
-    assert all(set(operation) <= {"get"} for path in paths.values() for operation in [path])
-    assert all(set(operation.keys()) == {"get"} for operation in paths.values())
+    for path, operations in paths.items():
+        expected_methods = {
+            "/auth/login": {"post"},
+            "/auth/logout": {"post"},
+            "/auth/me": {"get"},
+        }.get(path, {"get"})
+        assert set(operations) == expected_methods
 
 
 def test_openapi_contains_ap12_nullable_fields() -> None:

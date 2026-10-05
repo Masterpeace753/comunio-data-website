@@ -14,12 +14,12 @@ Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit fo
 
 ```mermaid
 flowchart LR
-  U[Web Nutzer] --> FE[Vercel Frontend]
-  FE --> WAF[AWS WAF]
-  WAF --> ALB[Application Load Balancer]
+  U[Browser] -->|HTTPS, same-origin| FE[Vercel Next.js Frontend und BFF]
+  FE -->|Server-Proxy: Cookie plus Proxy-Secret| CF[CloudFront API Ingress]
 
   subgraph AWS
-    ALB --> API[Private ECS Fargate API Service]
+    CF -->|HTTPS/TLS origin| ALB[ALB HTTPS Listener]
+    ALB --> API[ECS Fargate FastAPI Service]
     API --> DB[(Private PostgreSQL)]
     API -. optional P2 .-> C[(Redis Cache)]
 
@@ -104,8 +104,8 @@ flowchart LR
   - Die API wird als eigener ECS/Fargate-Service betrieben und nicht als alternatives Kommando im einmaligen Ingest-Task.
   - API-Tasks erhalten nur Datenbankzugriff und benoetigen keine Comunio-Credentials.
   - Die API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; das Ingest-Secret wird nicht geteilt.
-  - Der aktuelle API-MVP ist als oeffentlicher HTTP-ALB mit `assign_public_ip=true` produktiv verifiziert; private Networking, HTTPS/ACM und WAF sind optionale spaetere Haertung.
-  - Da aktuell kein Frontend produktiv ist, wird als Notfallmassnahme ein interner API-ALB vorbereitet. Der Terraform-Stand ist bereit, die AWS-Umschaltung ist bis zum erfolgreichen `terraform apply` noch nicht aktiv.
+  - Repository-Befund: Terraform konfiguriert den API-ALB als oeffentlich (`internal = false`) mit einem HTTP-Listener auf Port 80; ein CloudFront-Frontend, HTTPS-Listener/Zertifikat am Origin und CloudFront-beschraenkter ALB-Zugriff sind darin nicht enthalten. Das beschreibt den eingecheckten Konfigurationsstand, nicht den Live-Zustand eines AWS-Kontos.
+  - AP-14 Terraform-Konfiguration im Arbeitsbaum legt HTTPS am CloudFront-Origin und ALB-Ingress ueber die CloudFront-Origin-Prefix-List an. Das ist Konfigurationscode, kein Nachweis einer AWS-Aenderung oder eines erreichbaren/deployed Endpunkts.
 
 ### 3.3 Frontend Service (React auf Vercel)
 
@@ -113,7 +113,7 @@ flowchart LR
   - Dashboard, Team- und Spieleransichten
   - Historische Visualisierung von Marktwerten
   - Filter, Suche, Sortierung und Vergleich
-  - Login-Seite und Session-Guard (AP-14, geplant; siehe Abschnitt 5.1.1)
+  - Login-Seite und Session-Guard (AP-14; Zielarchitektur und Arbeitsbaumstatus in Abschnitt 5.1.1)
 - Performance:
   - statische Assets via CDN
   - API-Responses gecached und pagination-faehig
@@ -173,25 +173,31 @@ flowchart LR
 - Gate S5 Image Integrity: ECS-Container-Images muessen immutable Referenzen verwenden; `latest` ist in Produktion verboten. **Umgesetzt (AP-10b/AP-10a):** `infra/aws/terraform/variables.tf` verwirft `latest`, und `infra/aws/terraform/main.tf` setzt `image_tag_mutability = "IMMUTABLE"`.
 - Gate-Policy: Bei Verstoessen gegen S1-S5 ist ein Production-Deploy blockiert.
 
-### 5.1.1 Benutzeranmeldung (AP-14, geplant)
+### 5.1.1 Benutzeranmeldung (AP-14.1 bis AP-14.6, Zielarchitektur und Arbeitsbaumstatus)
 
-Ziel: Der Aufruf bestehender Vercel-Links zeigt ohne Session die Login-Seite. Es gibt genau einen User.
+Ziel: Ein Aufruf bestehender Vercel-Links ohne gueltige Session zeigt die Login-Seite; nach erfolgreichem Login geht es zum angeforderten Ziel zurueck. Es gibt genau einen User. Der Browser spricht ausschliesslich die Vercel-Origin an; Next.js-Serverrouten sind der BFF fuer Authentifizierung und API. Der Proxy-Token aus AP-13.a bleibt als unabhaengige zweite Schutzschicht bestehen.
 
 ```text
-Browser --HTTPS--> Vercel (Next.js: Login-Seite, Guard, /api/auth/* Proxy)
-                      --HTTPS--> CloudFront --> ALB --> FastAPI (/auth/*, /api/v1/*)
-                                                          \-> Secrets Manager (comunio/auth)
+Browser --HTTPS--> Vercel (Next.js: Login, Guard, same-origin /api/auth/* und /api/proxy/*)
+                      --HTTPS--> CloudFront (Viewer HTTPS, keine Auth/API-Caches)
+                                    --HTTPS/TLS--> ALB (HTTPS-Listener, nur CloudFront-Zugriff)
+                                                       --> FastAPI (/auth/*, /api/v1/*)
+                                                            |--> Secrets Manager (comunio/auth)
+                                                            \--> PostgreSQL (Read-only)
 ```
 
-- **Speicherort:** eigenes Secrets-Manager-Secret `comunio/auth`, getrennt vom Comunio-Credentials-Secret. Inhalt: `username`, `passwordHash` (bcrypt, Cost 12), `jwtSecret` (mind. 32 Byte Zufall). Manuell angelegt, nicht im Terraform-State; Terraform kennt nur den ARN. Die API-Task-Rolle erhaelt `secretsmanager:GetSecretValue` nur auf diesen ARN; Standard-KMS-Key. Das Secret wird beim ersten Zugriff geladen und gecacht.
-- **Login:** `POST /auth/login` vergleicht Username (`hmac.compare_digest`) und fuehrt `bcrypt.checkpw` immer aus; Fehler liefern ein generisches `401`. Erfolg erzeugt ein HS256-JWT (`sub`, `iat`, `exp` 8 h, `iss`, `aud`).
-- **Cookie:** `token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`, ohne `Domain`. Der Browser spricht nur die Vercel-Domain an (same-origin ueber Proxy-Routen), daher kein CORS mit Credentials und keine Third-Party-Cookie-Probleme.
-- **Verifikation:** Die FastAPI-Middleware prueft bei jedem Request das Cookie (fester Algorithmus, `exp`, `iss`, `aud`). Ausgenommen sind `/auth/login` und `/health/*`. Das Proxy-Secret aus AP-13.a bleibt als zweite Schicht bestehen. `GET /auth/me` und `POST /auth/logout` ergaenzen den Ablauf.
-- **Frontend-Guard:** Die Next.js-Middleware leitet ohne Cookie auf `/login?next=<Ziel>` um; die eigentliche Pruefung bleibt im Backend. Kein Token in localStorage.
-- **HTTPS-Eingang:** CloudFront (kein eigener Domain-Bedarf, Free Tier) vor dem ALB, ohne Caching fuer `/auth/*` und `/api/*`; der ALB nimmt nur CloudFront-Verkehr an. Alternative: eigene Domain mit ACM und HTTPS-Listener.
-- **Missbrauchsschutz:** In-Memory-Rate-Limit pro IP auf `/auth/login`, Origin-Pruefung bei schreibenden Methoden, `SameSite=Strict`. Kein WAF im MVP (siehe WAF-Entscheidung).
-- **Rotation:** Passwortwechsel durch neuen Hash im Secret; alle Sessions werden durch ein neues `jwtSecret` ungueltig.
-- **Kosten:** ca. 0,40 USD/Monat fuer das zusaetzliche Secret; CloudFront im Free Tier; keine zusaetzliche Compute-Infrastruktur, da die Routen im bestehenden API-Task laufen.
+- **AP-14.1 — HTTPS und Origin-Schutz (Produktionsblocker):** Browser-seitiges HTTPS allein reicht nicht. CloudFront muss Viewer-HTTPS erzwingen und den Origin per HTTPS-only mit TLS zum ALB erreichen. Dazu gehoeren ein HTTPS-Listener am ALB und ein fuer den von CloudFront verwendeten Origin-Host gueltiges ACM-Zertifikat; TLS muss auch auf dem CloudFront-zu-ALB-Hop aktiv und gueltig sein. Der ALB darf anschliessend nur CloudFront-Verkehr annehmen, z. B. ueber einen geheimen, am Origin geprueften Custom-Header oder eine passende CloudFront-Prefix-List. Ein blosses CloudFront vor dem bestehenden HTTP-Listener erfuellt den Vertrag nicht. Alternative ist ein eigener Domain-/ACM-Aufbau mit HTTPS am ALB. CloudFront darf fuer `/auth/*` und `/api/v1/*` nicht cachen und muss benoetigte Cookie-, `Authorization`- und `Origin`-Header sowie `Cookie`- und `Set-Cookie`-Werte korrekt weiterleiten.
+- **AP-14.2 — Auth-Secret und IAM:** Eigenes Secrets-Manager-Secret `comunio/auth`, getrennt von Comunio-, DB- und Proxy-Secrets. JSON-Felder: `username`, `passwordHash` (bcrypt, Cost 12) und `jwtSecret` (mindestens 32 Byte kryptographisch zufaellig). Betreiber legen den Wert manuell an; weder Secret-Wert noch Version kommt in Terraform-State, ENV, Logs oder Git. Terraform erhaelt nur `auth_secret_arn` und setzt `AUTH_SECRET_ARN`; die API-Task-Rolle bekommt ausschliesslich `secretsmanager:GetSecretValue` auf genau diesen ARN. Der Standard-KMS-Key wird verwendet. Die API laedt das Secret beim ersten Zugriff und cached es im Prozess; ein Rollout/Neustart der API-Tasks ist nach Rotation erforderlich, damit der Cache den neuen Wert nutzt.
+- **AP-14.3 — Backend-Session:** `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. Login vergleicht den Username constant-time und fuehrt `bcrypt.checkpw` auch bei unbekanntem Username aus; Fehler sind ein nicht unterscheidbares generisches `401`. Erfolg gibt ein fest auf HS256 begrenztes JWT mit `sub`, `iat`, `exp` (8 Stunden), `iss` und `aud` aus. Die Middleware prueft JWT-Signatur und Claims bei jedem geschuetzten Request. Ausnahmen sind nur Login und die vereinbarten Health-Routen; Logout loescht das Cookie. Fehlt `AUTH_SECRET_ARN` in Production oder kann das Secret nicht gelesen werden, startet/arbeitet Auth fail-closed und gibt keinen anonymen API-Zugriff frei. Das AP-13.a-Proxy-Bearer-Secret bleibt zusaetzlich erforderlich.
+- **Cookie und Browsergrenze:** `token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`, ohne `Domain`. Der Browser ruft nur gleich-origin Next.js-Routen auf. Diese reichen `Cookie` zum Backend und `Set-Cookie` zum Browser durch; API-CORS mit Credentials und Third-Party-Cookies werden nicht benoetigt. Kein Token in localStorage, HTML oder Client-Bundle.
+- **AP-14.4 — Missbrauchsschutz:** In-Memory-Limit pro Quell-IP auf `/auth/login` (vorgesehen: 5 Versuche pro 5 Minuten, mit `429` nach Ueberschreitung). Das Limit ist pro API-Prozess und damit kein clusterweiter Schutz; mehrere Tasks koennen das effektive Limit erhoehen. Fuer einen Ein-Task-MVP ist es ein Basisschutz; bei horizontaler Skalierung muss es durch ein geteiltes Limit oder einen Edge-Schutz ersetzt/ergaenzt werden. Schreibende Auth-Requests (Login/Logout) pruefen `Origin` gegen eine exakte Allowlist der Vercel-Origin; fehlende oder nicht erlaubte Origins werden abgewiesen. `SameSite=Strict` ist zusaetzliche CSRF-Abwehr. Kein WAF ist AP-14-Voraussetzung.
+- **AP-14.5 — Frontend:** `/login` bietet den Login und verarbeitet einen validierten `next`-Pfad (nur lokale Pfade, kein offener Redirect); das Formular sendet an eine gleich-origin Next.js-Serverroute. Der Next.js-Request-Guard (`proxy.ts`) leitet fehlende Cookies zu `/login?next=...`; das Vorhandensein des Cookies ist nur ein UX-Guard, keine JWT-Verifikation. Die Backend-Middleware ist die Autoritaet. Serverrouten `/api/auth/*` leiten Login/Logout/Me samt Request-Cookie, Origin und Set-Cookie weiter und fuegen das Proxy-Secret nur serverseitig hinzu. Der bestehende `/api/proxy/*` reicht Session-Cookie sowie Proxy-Secret zum Backend weiter; geschuetzte API-Responses landen nicht in gemeinsam genutzten Caches (`no-store`/privat). Der Browser erhaelt nie das Proxy-Secret.
+- **AP-14.6 — Nachweise:** automatisierte Backend- und Frontend-Tests muessen Erfolg/Fehler fuer Login, falschen Username/Passwort, manipuliertes, abgelaufenes und `alg=none`-JWT, fehlende Session, Cookie-Flags, Rate-Limit, Origin-Ablehnung und Logout abdecken. Ein Operator-Runbook muss Secret-Anlage, least-privilege IAM, Passwort-/JWT-Rotation sowie Task-Neustart und sichere End-to-End-Abnahme dokumentieren.
+- **Kosten:** Das Secret verursacht einen kleinen laufenden Secrets-Manager-Aufwand; CloudFront- und TLS-/ALB-Kosten sind anhand der gewaehlten Region, Datenmenge, Requests und ggf. Zertifikats-/Domain-Konfiguration zu kalkulieren. Keine zusaetzliche Compute-Infrastruktur ist fuer den Auth-Code vorgesehen. Free-Tier-Verfuegbarkeit ist kein Architektur- oder Kosten-Gate und muss fuer Account und Nutzung geprueft werden.
+
+**Implementierungsstand:** Backend-/Frontend-Auth, automatisierte Tests, CloudFront-Origin-TLS, Auth-Secret-IAM und das Operator-Runbook sind im Arbeitsbaum umgesetzt. Backendtests (47 passed, 3 skipped), Frontendtests (23 passed), Frontend-Lint und Produktionsbuild sowie Terraform-Formatierung und -Validierung wurden erfolgreich ausgefuehrt. Dies belegt weder einen gemergten Stand noch eine AWS-Bereitstellung. Keine AWS-Ressourcen wurden angewendet und keine Live-Endpunkte geprueft.
+
+**Verbleibende Produktionsvoraussetzungen:** Betreiber muessen Origin-DNS und ein ausgestelltes ACM-Zertifikat fuer den ALB-Origin bereitstellen, das Auth-Secret manuell anlegen und dessen ARN konfigurieren sowie Vercel-Umgebungsvariablen abstimmen. Danach sind ein gepruefter Terraform-Plan, freigegebener Apply und Ende-zu-Ende-Abnahme in einer kontrollierten Umgebung erforderlich. Das Login-Limit nutzt bei CloudFront `CloudFront-Viewer-Address`; diese Ableitung setzt die vorgesehene CloudFront-Origin-Ingress-Beschraenkung voraus. Das Limit bleibt pro API-Prozess und ist vor horizontaler Skalierung durch einen gemeinsamen Zaehler oder Edge-Schutz zu ersetzen/ergaenzen. Das AP-13.a-Bearer-Secret wird fuer `/auth/*` und `/api/v1/*` geprueft (in Production ist es beim Start verpflichtend).
 
 Umsetzungsplan und Definition of Done: `implementierungsplan.md`, Abschnitt AP-14.
 

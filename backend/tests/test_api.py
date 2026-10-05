@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import secrets
 from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
 
 import src.api.app as api_app
+from src.api import auth
 from src.api.dependencies import get_db_connection
 from src.api.errors import ResourceNotFoundError
+
+API_AUTH_CONFIG = auth.AuthConfig(
+    username="test-user",
+    password_hash=b"$2b$12$C6UzMDM.H6dfI/f/IKcEe.7ZcN9M2F8KKoY7uKzYhVv1lQ4xnL2nW",
+    jwt_secret=secrets.token_urlsafe(48),
+)
 
 
 class ReadyConnection:
@@ -31,7 +39,14 @@ class ReadyCursor:
 def client(monkeypatch) -> TestClient:
     api_app.app.dependency_overrides[get_db_connection] = lambda: ReadyConnection()
     monkeypatch.setattr(api_app, "get_db_connection", lambda: ReadyConnection())
-    return TestClient(api_app.app)
+    monkeypatch.setattr(auth, "get_auth_config", lambda: API_AUTH_CONFIG)
+    test_client = TestClient(api_app.app, base_url="https://testserver")
+    test_client.cookies.set(
+        auth.TOKEN_COOKIE_NAME,
+        auth.create_access_token(API_AUTH_CONFIG.username, API_AUTH_CONFIG.jwt_secret),
+        path="/",
+    )
+    return test_client
 
 
 def test_live_health_does_not_require_database(monkeypatch) -> None:

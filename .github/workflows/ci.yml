@@ -70,7 +70,7 @@ jobs:
         run: python -m pytest tests -vv --maxfail=1
 
       - name: Compile backend and operational scripts
-        run: python -m compileall -q src tests ../scripts/aws/provision-api-readonly-user.py
+        run: python -m compileall -q src tests ../scripts/aws/provision-api-readonly-user.py ../scripts/aws/manage-auth-secret.py
 
       - name: Build API image
         run: docker build --file Dockerfile.api --tag comunio-backend-api:ci .
