@@ -259,6 +259,11 @@ resource "aws_ecs_task_definition" "api" {
     }
 
     precondition {
+      condition     = var.auth_secret_arn != null
+      error_message = "The public API requires an authentication secret ARN."
+    }
+
+    precondition {
       condition     = length(local.api_runtime_subnet_ids) >= 2
       error_message = "The public API ALB requires at least two public subnets in different availability zones."
     }
@@ -281,6 +286,10 @@ resource "aws_ecs_task_definition" "api" {
         {
           name  = "API_ALLOWED_ORIGINS"
           value = var.api_allowed_origins
+        },
+        {
+          name  = "AUTH_SECRET_ARN"
+          value = var.auth_secret_arn
         },
       ]
       secrets = [

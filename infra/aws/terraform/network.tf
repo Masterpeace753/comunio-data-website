@@ -205,10 +205,10 @@ resource "aws_security_group" "api_alb" {
   }
 
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing[0].id]
   }
 
   egress {
@@ -218,7 +218,7 @@ resource "aws_security_group" "api_alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, { Name = "${local.name_prefix}-api-alb" })
+  tags = merge(local.edge_tags, { Name = "${local.name_prefix}-api-alb" })
 }
 
 resource "aws_security_group" "api" {

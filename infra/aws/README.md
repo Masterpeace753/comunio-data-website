@@ -3,11 +3,61 @@
 Infrastructure-Version: v0.5.4
 Dokumentationsstand: 2026-09-19
 
+## AP-14.1: HTTPS CloudFront ingress
+
+When `api_enabled = true`, the API is exposed through a CloudFront distribution.
+Use its `api_cloudfront_domain_name` output as the API base URL in the Vercel
+server-side proxy. CloudFront redirects viewer HTTP requests to HTTPS, disables
+caching for all paths (including `/auth/*` and `/api/*`), and forwards cookies,
+`Authorization`, `Content-Type`, `Origin`, and query strings to the API. The
+CloudFront-generated `CloudFront-Viewer-Address` is also forwarded for per-viewer
+login throttling. Authorization is
+included in a zero-TTL cache policy because CloudFront requires this to forward
+that header; it is never cached. The ALB security group allows inbound TCP/443
+only from AWS's CloudFront origin-facing managed prefix list; its HTTP listener
+is not reachable through that security group.
+
+These are Terraform configuration changes only; they do not alter an existing
+AWS deployment until reviewed and applied. Do not send session cookies,
+authorization headers, or other credentials to the legacy HTTP ALB endpoint.
+
+Before enabling the API, provision these inputs:
+
+1. A public DNS hostname for the ALB origin (for example, `api-origin.example.com`)
+   with DNS resolving to the API ALB.
+1. An issued, publicly trusted ACM certificate in `aws_region` whose SAN covers
+   that exact hostname. Complete ACM DNS validation before applying Terraform.
+1. Set `api_origin_domain_name` and `api_origin_certificate_arn` in the
+   environment's Terraform input file (not this repository).
+1. Set `api_allowed_origins` to the exact production Vercel origin; the Terraform
+   default permits only localhost and is not suitable for production login.
+
+The custom origin hostname and certificate are mandatory because the ALB's
+AWS-generated `*.elb.amazonaws.com` hostname cannot be covered by a customer
+certificate. CloudFront uses `https-only` to the ALB and validates the origin
+certificate; do not substitute HTTP or a self-signed certificate. The viewer
+uses CloudFront's default `*.cloudfront.net` certificate, so a separate
+CloudFront viewer-domain certificate in `us-east-1` is not required unless a
+custom viewer hostname is added later. The origin hostname must continue to
+resolve to this ALB after deployment.
+
+The SG prefix-list restriction allows connections originating from CloudFront's
+origin-facing network, not only this one distribution. This is the AP-14.1
+network-boundary option; do not expose additional ALB listeners or add a
+`0.0.0.0/0` ingress rule. Existing ALB CloudWatch alarms continue to cover API
+latency and 4xx/5xx rates. CloudFront distributions have standard
+request/error/latency metrics in CloudWatch; enable additional detailed metrics
+only if operational needs justify their cost. The distribution uses
+`PriceClass_100` (lower-cost edge coverage); CloudFront request and data-transfer
+charges can apply outside any eligible Free Tier quotas, and the ALB remains a
+separately billed resource.
+
 ## API deployment status
 
-The read-only FastAPI service is deployed as an authenticated ECS service behind an
-internet-facing HTTP ALB for the Vercel server-side proxy. The ingest scheduler,
-database, and snapshot pipeline remain active.
+The API remains disabled. The last verified deployment used an internet-facing
+HTTP ALB before AP-14; the current Terraform changes add an HTTPS-only CloudFront
+path but have not been applied. The ingest scheduler, database, and snapshot
+pipeline remain active.
 
 Re-enable the API only when the frontend integration starts:
 
@@ -15,44 +65,84 @@ Re-enable the API only when the frontend integration starts:
 api_enabled = true
 ```
 
-The API requires the server-side proxy bearer token. Configure the same token as
+The API requires both the AP-13.a proxy bearer token and the AP-14 login session.
+Configure the proxy token as
 `API_PROXY_SECRET` in Vercel and as the AWS Secrets Manager secret referenced by
 `api_proxy_secret_arn`.
 
-The deployed API endpoint is:
+The legacy HTTP API endpoint from the earlier deployment is:
 
 ```text
 http://comunio-prod-api-1413412868.eu-central-1.elb.amazonaws.com
 ```
 
-Verified endpoints:
+Previously verified endpoints (before AP-14; not a live status check):
 
 - `/health/live` -> HTTP 200
 - `/health/ready` -> HTTP 200 with database connectivity
 - `/api/v1/players?limit=1` -> HTTP 200
 
-The MVP uses `assign_public_ip=true`, an HTTP listener, Vercel CORS for
+The endpoint above is not an HTTPS endpoint and must not be used for
+authentication credentials. The AP-14.1 CloudFront deployment and its TLS
+origin prerequisites must be completed before re-enabling the API for auth.
+
+The earlier MVP used `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, a mandatory proxy bearer token, and a
-separate PostgreSQL read-only user/secret. HTTPS/ACM, WAF, and private API subnets
-remain hardening steps before handling sensitive or commercial traffic.
-The MVP cost decision is to use the Vercel server-side proxy instead of a separate
-ECS/Fargate proxy or API Gateway. AWS WAF is a P2 hardening step, not an MVP
-go-live gate. Additional WAF, NAT, private-ALB, and SNS costs are deferred until
-traffic, alarm data, or security requirements justify the change. Before go-live,
-the API ALB must nevertheless be reachable from Vercel; an internal ALB requires
-a separate private network path and cannot be called directly by a Vercel Hobby
-Function.
+separate PostgreSQL read-only user/secret. AP-14.1 replaces direct access to that
+HTTP endpoint with the CloudFront HTTPS origin described above. The Vercel
+server-side proxy must call the CloudFront hostname, never the ALB hostname.
+CloudFront is the low-operations ingress choice instead of a separate
+ECS/Fargate proxy or API Gateway. AWS WAF, private API subnets, and NAT remain
+future hardening options; they are not substitutes for the AP-14.1 TLS and
+origin-network restrictions.
 
 The AWS PowerShell scripts set `AWS_CLI_CONNECT_TIMEOUT=10` and
 `AWS_CLI_READ_TIMEOUT=30` and verify `aws sts get-caller-identity` before running.
 Expired credentials therefore fail fast instead of leaving an AWS CLI process
 waiting indefinitely.
 
+## AP-14.2: authentication secret lifecycle
+
+The API login secret is separate from the Comunio credentials, database URL, and
+AP-13.a proxy-token secrets. Create it from an authenticated operator session;
+the helper prompts for the username and password without putting credentials in
+shell history or command-line arguments:
+
+```powershell
+python scripts/aws/manage-auth-secret.py create
+```
+
+The helper stores only `username`, a bcrypt Cost-12 `passwordHash`, and a
+cryptographically random `jwtSecret` in `comunio/auth`. It prints the secret ARN,
+not secret contents. Pass that ARN as `auth_secret_arn` in the protected
+Terraform input file; Terraform does not create or read the secret value.
+
+Rotate the login password (existing JWT sessions remain valid):
+
+```powershell
+python scripts/aws/manage-auth-secret.py rotate-password
+```
+
+Rotate the JWT signing key to revoke all existing sessions:
+
+```powershell
+python scripts/aws/manage-auth-secret.py rotate-jwt
+```
+
+After either operation, deploy a new API task revision or force a new ECS
+deployment so every process discards its cached secret and reads the new
+Secrets Manager version. Verify the service is healthy and that login works
+before ending the operator session. Do not print, copy into Terraform variables,
+or commit the secret JSON or generated values. The task role is granted
+`secretsmanager:GetSecretValue` only for the configured auth-secret ARN.
+
 ### Emergency private switch
 
-The API was disabled as the immediate no-frontend measure. When it is re-enabled,
-the Terraform configuration creates the API ALB as an internal load balancer
-(`internal=true`).
+The API remains disabled as the immediate no-frontend measure. Re-enabling it
+creates the HTTPS CloudFront path only when the required origin hostname and
+regional ACM certificate inputs are supplied. This Terraform configuration does
+not make the ALB internal; its security group instead restricts inbound traffic
+to CloudFront's origin-facing managed prefix list.
 
 ## API database access
 

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from psycopg2.extensions import connection as PgConnection
 
 from . import repositories
+from . import auth
 from .dependencies import get_db_connection
 from .errors import RepositoryUnavailableError, ResourceNotFoundError
 from .schemas import (
@@ -31,6 +32,8 @@ is_production = app_env in {"prod", "production"}
 api_proxy_secret = os.getenv("API_PROXY_SECRET", "")
 if is_production and not api_proxy_secret:
     raise RuntimeError("Production requires API_PROXY_SECRET")
+if is_production and not os.getenv("AUTH_SECRET_ARN"):
+    raise RuntimeError("Production requires AUTH_SECRET_ARN")
 
 app = FastAPI(
     title="Comunio Data API",
@@ -40,6 +43,7 @@ app = FastAPI(
     openapi_url=None if is_production else "/openapi.json",
 )
 Db = Annotated[PgConnection, Depends(get_db_connection)]
+app.include_router(auth.router)
 
 allowed_origins = [
     origin.strip()
@@ -57,7 +61,32 @@ app.add_middleware(
 
 @app.middleware("http")
 async def require_api_proxy_authentication(request: Request, call_next):
-    if request.url.path.startswith("/api/v1/"):
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        origin = request.headers.get("Origin")
+        if not origin or origin not in allowed_origins:
+            return JSONResponse(
+                status_code=403,
+                content={"code": "invalid_origin", "message": "Request origin is not allowed."},
+            )
+
+    public_path = request.url.path == "/auth/login" or request.url.path.startswith("/health/")
+    if not public_path:
+        try:
+            auth_config = auth.get_auth_config()
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={"code": "authentication_unavailable", "message": "Authentication is unavailable."},
+            )
+        session_token = request.cookies.get(auth.TOKEN_COOKIE_NAME)
+        if not session_token or not auth.validate_access_token(session_token, auth_config.jwt_secret):
+            return JSONResponse(
+                status_code=401,
+                content={"code": "unauthorized", "message": "Authentication required."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    if request.url.path.startswith(("/api/v1/", "/auth/")):
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if api_proxy_secret and (scheme.lower() != "bearer" or not hmac.compare_digest(token, api_proxy_secret)):
