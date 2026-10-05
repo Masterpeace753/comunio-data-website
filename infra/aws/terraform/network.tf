@@ -197,18 +197,11 @@ resource "aws_security_group" "api_alb" {
   count = var.api_enabled ? 1 : 0
 
   name_prefix = "${local.name_prefix}-api-alb-"
-  description = "Public ALB for the authenticated read-only Comunio API"
+  description = "Internal ALB for the authenticated read-only Comunio API; ingress only from the CloudFront VPC origin"
   vpc_id      = local.vpc_id
 
   lifecycle {
     create_before_destroy = true
-  }
-
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing[0].id]
   }
 
   egress {

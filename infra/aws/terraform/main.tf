@@ -264,8 +264,8 @@ resource "aws_ecs_task_definition" "api" {
     }
 
     precondition {
-      condition     = length(local.api_runtime_subnet_ids) >= 2
-      error_message = "The public API ALB requires at least two public subnets in different availability zones."
+      condition     = length(local.api_runtime_subnet_ids) >= 2 && length(local.private_subnet_ids) >= 2
+      error_message = "The API requires at least two public subnets for tasks and two private subnets for the internal ALB, in different availability zones."
     }
   }
 
@@ -429,10 +429,10 @@ resource "aws_ecs_task_definition" "api_bootstrap" {
 resource "aws_lb" "api" {
   count              = var.api_enabled ? 1 : 0
   name               = "${local.name_prefix}-api"
-  internal           = false
+  internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.api_alb[0].id]
-  subnets            = local.api_runtime_subnet_ids
+  subnets            = local.private_subnet_ids
 
   tags = local.common_tags
 }
