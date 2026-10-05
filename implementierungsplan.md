@@ -333,6 +333,33 @@ Definition of Done:
 - Proxy-, API- und Fehlerpfadtests decken `401`, Timeout, Weitergabe von `4xx`/`5xx` und CORS-Verhalten ab.
 - Eine Kostenentscheidung fuer Vercel-Proxy, ECS-Proxy oder privaten AWS-Pfad ist dokumentiert.
 
+### AP-14 Eigener Login (Einzel-User, JWT im HttpOnly-Cookie) - geplant
+
+AP-14 ergaenzt AP-13.a um eine Benutzeranmeldung. Aufruf einer bestehenden Vercel-URL ohne gueltige Session fuehrt zur Login-Seite; nach erfolgreichem Login geht es zurueck zur urspruenglich aufgerufenen Seite. Es gibt genau einen User. Das Proxy-Secret aus AP-13.a bleibt als zusaetzliche Schicht bestehen. Architektur: siehe `architecture.md` Abschnitt 5.4.
+
+Teilaufgaben:
+
+- AP-14.1 HTTPS-Eingang: CloudFront-Distribution (Free Tier) vor dem API-ALB, kein Caching fuer `/auth/*` und `/api/*`, Weitergabe von Cookie-, Authorization- und Origin-Header. ALB nur fuer CloudFront erreichbar (geheimer Origin-Header oder CloudFront-Prefix-List). Alternative: eigene Domain mit ACM und HTTPS-Listener am ALB. Das ist ein Blocker, weil das `Secure`-Cookie und die Zugangsdaten nicht ueber HTTP laufen duerfen.
+- AP-14.2 Secret: neues Secrets-Manager-Secret `comunio/auth` (JSON `username`, `passwordHash` als bcrypt Cost 12, `jwtSecret`), manuell per CLI angelegt, nicht im Terraform-State. Terraform erhaelt nur `auth_secret_arn`, `AUTH_SECRET_ARN` in der API-Task-Env und `secretsmanager:GetSecretValue` ausschliesslich auf diesen ARN fuer die API-Task-Rolle. Standard-KMS-Key, kein Custom-Key.
+- AP-14.3 Backend: `backend/src/api/auth.py` mit `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` und JWT-Pruefung in der Middleware (HS256 fix, `exp`, `iss`, `aud`; Ausnahmen `/auth/login` und `/health/*`). Secret wird beim ersten Zugriff geladen und im Prozess gecacht. Fail-closed in Production, wenn `AUTH_SECRET_ARN` fehlt.
+- AP-14.4 Missbrauchsschutz: In-Memory-Rate-Limit pro IP auf `/auth/login` (z. B. 5 Versuche pro 5 Minuten), `bcrypt.checkpw` immer ausfuehren, generisches `401`, Origin-Pruefung bei POST/PUT/DELETE, `SameSite=Strict`.
+- AP-14.5 Frontend (Next.js): serverseitige Proxy-Routen `/api/auth/*` reichen `Cookie` und `Set-Cookie` durch und ergaenzen serverseitig das Proxy-Secret; Seite `/login` mit `next`-Parameter; Middleware als Guard (Cookie vorhanden, echte Verifikation im Backend); kein Token in localStorage.
+- AP-14.6 Tests und Doku: pytest fuer richtiges/falsches Passwort, falschen Username, manipuliertes, abgelaufenes und `alg=none`-JWT, fehlendes Cookie, Cookie-Flags, Rate-Limit, Origin-Check und Logout; Runbook in `infra/aws/README.md` (Secret anlegen, Passwort-/JWT-Rotation).
+
+Cookie-Vertrag: `token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`, ohne `Domain`-Attribut (gilt nur fuer die Vercel-Domain; Browser und API sind dank Proxy same-origin, daher kein CORS mit Credentials).
+
+Kosten: zusaetzlich ca. 0,40 USD/Monat fuer das Secret; CloudFront im dauerhaften Free Tier; keine zusaetzlichen Compute-, Gateway- oder WAF-Kosten. Ein AWS-Budget-Alarm bei 1 USD wird empfohlen.
+
+Reihenfolge: AP-14.1 (HTTPS) -> AP-14.2 (Secret/IAM) -> AP-14.3/14.4 (Backend + Tests) -> AP-14.5 (Frontend) -> Deployment und End-to-End-Test.
+
+Definition of Done:
+
+- Ohne gueltiges Cookie liefert jede geschuetzte Route `401`; das Frontend leitet auf `/login` um und nach dem Login zurueck zur Ziel-URL.
+- Das Cookie ist `HttpOnly`, `Secure`, `SameSite=Strict` und fuer JavaScript nicht lesbar; JWT, Hash und Secret erscheinen in keinem Log, Bundle oder Repository.
+- Der ALB ist direkt aus dem Internet nicht mehr nutzbar, nur ueber CloudFront.
+- Alle AP-14.6-Tests laufen in CI gruen.
+- Passwortwechsel (neuer Hash) und Invalidierung aller Sessions (neues `jwtSecret`) sind dokumentiert und einmal erprobt.
+
 ### AP-11 Umsetzungsumfang und Definition of Done
 
 AP-11 wird in folgende Teilaufgaben zerlegt:
@@ -352,6 +379,7 @@ AP-11 gilt technisch als erledigt, wenn alle vereinbarten read-only-Endpunkte ve
 Diese Entscheidungen sind vor dem produktiven Phase-3-Ausbau verbindlich zu treffen oder zu bestaetigen:
 
 - Authentifizierung: Der aktuelle MVP ist bewusst oeffentlich lesbar und read-only. Vor der Frontend-Produktivnutzung wird mindestens ein serverseitig verwaltetes Proxy-Secret eingefuehrt; JWT/OAuth2 bleibt die Option fuer benutzerbezogene oder personalisierte Daten.
+- Benutzeranmeldung (AP-14): Genau ein User, Zugangsdaten als bcrypt-Hash in einem eigenen Secrets-Manager-Secret `comunio/auth`; JWT als HttpOnly-Cookie, Verifikation bei jedem Request im FastAPI-Backend.
 - Frontend-Origin: Vercel-Produktions-Origin ueber `API_ALLOWED_ORIGINS` konfigurieren; keine Wildcard-Origin in Production.
 - Frontend-Zugriff: Das Browser-Frontend spricht den API-Proxy an, nicht die AWS-API direkt. Der Proxy darf keine geheimen Header an den Browser weiterreichen.
 - Datenbankzugriff: API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; Ingest bleibt schreibberechtigt.
@@ -440,6 +468,7 @@ Das folgende Backlog ersetzt die urspruengliche Sprint-3-/Sprint-4-Einteilung un
 
 ### 12.2 P2: Produktionshygiene
 
+- AP-14 (geplant): Eigener Login mit JWT-Cookie, CloudFront-HTTPS-Eingang und Secret `comunio/auth`; Details siehe Abschnitt AP-14 oben. Vor der Frontend-Produktivnutzung umzusetzen.
 - AP-10b (erledigt, 2026-09-12): CI-Gates fuer Tests, Terraform-Format/Validate/Plan, Secret-Scanning und Dependency-Scanning sind in `.github/workflows/ci.yml` dokumentiert; die Pipeline blockiert Deployments bei Quality-Gate-Verletzung.
 - AP-9.1 (erledigt, 2026-08-31): Drei aufeinanderfolgende Scheduler-Fenster mit `run_type=scheduled`, Exit-Code `0` und ohne Snapshot-Duplikate nachgewiesen; siehe Abschnitt 19 fuer die vollstaendige Evidenz.
 

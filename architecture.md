@@ -113,6 +113,7 @@ flowchart LR
   - Dashboard, Team- und Spieleransichten
   - Historische Visualisierung von Marktwerten
   - Filter, Suche, Sortierung und Vergleich
+  - Login-Seite und Session-Guard (AP-14, geplant; siehe Abschnitt 5.1.1)
 - Performance:
   - statische Assets via CDN
   - API-Responses gecached und pagination-faehig
@@ -171,6 +172,28 @@ flowchart LR
 - Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
 - Gate S5 Image Integrity: ECS-Container-Images muessen immutable Referenzen verwenden; `latest` ist in Produktion verboten. **Umgesetzt (AP-10b/AP-10a):** `infra/aws/terraform/variables.tf` verwirft `latest`, und `infra/aws/terraform/main.tf` setzt `image_tag_mutability = "IMMUTABLE"`.
 - Gate-Policy: Bei Verstoessen gegen S1-S5 ist ein Production-Deploy blockiert.
+
+### 5.1.1 Benutzeranmeldung (AP-14, geplant)
+
+Ziel: Der Aufruf bestehender Vercel-Links zeigt ohne Session die Login-Seite. Es gibt genau einen User.
+
+```text
+Browser --HTTPS--> Vercel (Next.js: Login-Seite, Guard, /api/auth/* Proxy)
+                      --HTTPS--> CloudFront --> ALB --> FastAPI (/auth/*, /api/v1/*)
+                                                          \-> Secrets Manager (comunio/auth)
+```
+
+- **Speicherort:** eigenes Secrets-Manager-Secret `comunio/auth`, getrennt vom Comunio-Credentials-Secret. Inhalt: `username`, `passwordHash` (bcrypt, Cost 12), `jwtSecret` (mind. 32 Byte Zufall). Manuell angelegt, nicht im Terraform-State; Terraform kennt nur den ARN. Die API-Task-Rolle erhaelt `secretsmanager:GetSecretValue` nur auf diesen ARN; Standard-KMS-Key. Das Secret wird beim ersten Zugriff geladen und gecacht.
+- **Login:** `POST /auth/login` vergleicht Username (`hmac.compare_digest`) und fuehrt `bcrypt.checkpw` immer aus; Fehler liefern ein generisches `401`. Erfolg erzeugt ein HS256-JWT (`sub`, `iat`, `exp` 8 h, `iss`, `aud`).
+- **Cookie:** `token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`, ohne `Domain`. Der Browser spricht nur die Vercel-Domain an (same-origin ueber Proxy-Routen), daher kein CORS mit Credentials und keine Third-Party-Cookie-Probleme.
+- **Verifikation:** Die FastAPI-Middleware prueft bei jedem Request das Cookie (fester Algorithmus, `exp`, `iss`, `aud`). Ausgenommen sind `/auth/login` und `/health/*`. Das Proxy-Secret aus AP-13.a bleibt als zweite Schicht bestehen. `GET /auth/me` und `POST /auth/logout` ergaenzen den Ablauf.
+- **Frontend-Guard:** Die Next.js-Middleware leitet ohne Cookie auf `/login?next=<Ziel>` um; die eigentliche Pruefung bleibt im Backend. Kein Token in localStorage.
+- **HTTPS-Eingang:** CloudFront (kein eigener Domain-Bedarf, Free Tier) vor dem ALB, ohne Caching fuer `/auth/*` und `/api/*`; der ALB nimmt nur CloudFront-Verkehr an. Alternative: eigene Domain mit ACM und HTTPS-Listener.
+- **Missbrauchsschutz:** In-Memory-Rate-Limit pro IP auf `/auth/login`, Origin-Pruefung bei schreibenden Methoden, `SameSite=Strict`. Kein WAF im MVP (siehe WAF-Entscheidung).
+- **Rotation:** Passwortwechsel durch neuen Hash im Secret; alle Sessions werden durch ein neues `jwtSecret` ungueltig.
+- **Kosten:** ca. 0,40 USD/Monat fuer das zusaetzliche Secret; CloudFront im Free Tier; keine zusaetzliche Compute-Infrastruktur, da die Routen im bestehenden API-Task laufen.
+
+Umsetzungsplan und Definition of Done: `implementierungsplan.md`, Abschnitt AP-14.
 
 ### 5.2 Terraform-State und Secret-Lifecycle
 
