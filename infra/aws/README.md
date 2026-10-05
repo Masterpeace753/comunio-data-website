@@ -287,6 +287,36 @@ Windows helper:
 ./scripts/aws/run-migrations.ps1 -AssignPublicIp
 ```
 
+## Pause and resume (cost saving)
+
+Pause everything that bills per hour. Data, secrets and the CloudFront distribution stay in place.
+
+```powershell
+aws events disable-rule --name comunio-prod-snapshot-schedule
+aws ecs update-service --cluster comunio-prod-cluster --service comunio-prod-api --desired-count 0
+aws rds stop-db-instance --db-instance-identifier comunio-prod-postgres
+```
+
+Resume in this order:
+
+```powershell
+aws rds start-db-instance --db-instance-identifier comunio-prod-postgres
+aws rds wait db-instance-available --db-instance-identifier comunio-prod-postgres
+aws ecs update-service --cluster comunio-prod-cluster --service comunio-prod-api --desired-count 1
+aws ecs wait services-stable --cluster comunio-prod-cluster --services comunio-prod-api
+aws events enable-rule --name comunio-prod-snapshot-schedule
+```
+
+Verify with `https://<cloudfront-domain>/health/ready` (HTTP 200).
+
+Notes:
+
+- Run these in `eu-central-1`. With `aws login` profiles export credentials first (see "Terraform apply").
+- Do not run `terraform apply` while paused: Terraform reports the rule state, the service count and the DB status as drift and would revert them.
+- AWS restarts a stopped RDS instance automatically after 7 days.
+- Still billed while paused: internal ALB (about 0.5 EUR/day), RDS storage, Secrets Manager (about 0.40 EUR per secret and month). Interface VPC endpoints are off via `enable_interface_vpc_endpoints = false`.
+- For a longer pause run `terraform destroy` instead; rebuilding takes about 15 minutes.
+
 ## Manual snapshot run
 
 To trigger the snapshot task once before enabling the scheduler:
