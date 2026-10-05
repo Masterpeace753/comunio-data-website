@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import secrets
 from datetime import date
 from pathlib import Path
 
+import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 
 import src.api.app as api_app
+from src.api import auth
 from src.api.dependencies import get_db_connection
 from src.api import repositories
 
@@ -14,13 +17,27 @@ from src.api import repositories
 pytestmark = pytest.mark.integration
 
 
-def _client(connection) -> TestClient:
+AUTH_CONFIG = auth.AuthConfig(
+    username="test-user",
+    password_hash=bcrypt.hashpw(b"unused", bcrypt.gensalt(rounds=4)),
+    jwt_secret=secrets.token_urlsafe(48),
+)
+
+
+def _client(connection, monkeypatch) -> TestClient:
     api_app.app.dependency_overrides[get_db_connection] = lambda: connection
-    return TestClient(api_app.app)
+    monkeypatch.setattr(auth, "get_auth_config", lambda: AUTH_CONFIG)
+    test_client = TestClient(api_app.app, base_url="https://testserver")
+    test_client.cookies.set(
+        auth.TOKEN_COOKIE_NAME,
+        auth.create_access_token(AUTH_CONFIG.username, AUTH_CONFIG.jwt_secret),
+        path="/",
+    )
+    return test_client
 
 
-def test_migrations_and_ap12_history_run_against_postgres(seeded_postgres, postgres_connection) -> None:
-    test_client = _client(postgres_connection)
+def test_migrations_and_ap12_history_run_against_postgres(seeded_postgres, postgres_connection, monkeypatch) -> None:
+    test_client = _client(postgres_connection, monkeypatch)
     try:
         response = test_client.get("/api/v1/players/1/history")
     finally:

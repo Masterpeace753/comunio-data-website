@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from datetime import date, datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from src.api.errors import ResourceNotFoundError
 API_AUTH_CONFIG = auth.AuthConfig(
     username="test-user",
     password_hash=b"$2b$12$C6UzMDM.H6dfI/f/IKcEe.7ZcN9M2F8KKoY7uKzYhVv1lQ4xnL2nW",
-    jwt_secret="test-secret-that-is-at-least-32-bytes-long",
+    jwt_secret=secrets.token_urlsafe(48),
 )
 
 
