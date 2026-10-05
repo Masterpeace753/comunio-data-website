@@ -1,28 +1,6 @@
 # AP-14.1: expose the API only through CloudFront. CloudFront's viewer-facing
-# default hostname provides HTTPS; the custom origin hostname and regional ACM
-# certificate are required to keep the CloudFront-to-ALB connection encrypted.
-
-variable "api_origin_domain_name" {
-  description = "DNS hostname for the ALB HTTPS origin; must resolve to this ALB and be covered by api_origin_certificate_arn"
-  type        = string
-  default     = null
-
-  validation {
-    condition     = var.api_origin_domain_name == null || can(regex("^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)*[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$", var.api_origin_domain_name))
-    error_message = "api_origin_domain_name must be a DNS hostname without a scheme or path."
-  }
-}
-
-variable "api_origin_certificate_arn" {
-  description = "ARN of an issued ACM public certificate in aws_region whose SAN covers api_origin_domain_name; required when api_enabled is true"
-  type        = string
-  default     = null
-
-  validation {
-    condition     = var.api_origin_certificate_arn == null || can(regex("^arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/.+$", var.api_origin_certificate_arn))
-    error_message = "api_origin_certificate_arn must be an ACM certificate ARN."
-  }
-}
+# default hostname provides HTTPS. The ALB is internal and reachable only through
+# a CloudFront VPC origin, so no custom domain or ACM certificate is needed.
 
 locals {
   edge_tags = merge(
@@ -32,14 +10,6 @@ locals {
     },
   )
 }
-
-data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
-  count = var.api_enabled ? 1 : 0
-
-  name = "com.amazonaws.global.cloudfront.origin-facing"
-}
-
-data "aws_partition" "current" {}
 
 resource "aws_cloudfront_cache_policy" "api_no_cache" {
   count = var.api_enabled ? 1 : 0
@@ -97,29 +67,47 @@ resource "aws_cloudfront_origin_request_policy" "api" {
   }
 }
 
-resource "aws_lb_listener" "api_https_cloudfront" {
+resource "aws_cloudfront_vpc_origin" "api" {
   count = var.api_enabled ? 1 : 0
 
-  load_balancer_arn = aws_lb.api[0].arn
-  port              = 443
-  protocol          = "HTTPS"
-  certificate_arn   = var.api_origin_certificate_arn
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  vpc_origin_endpoint_config {
+    name                   = "${local.name_prefix}-api-alb"
+    arn                    = aws_lb.api[0].arn
+    http_port              = 80
+    https_port             = 443
+    origin_protocol_policy = "http-only"
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api[0].arn
-  }
-
-  lifecycle {
-    precondition {
-      condition = (
-        var.api_origin_certificate_arn != null &&
-        startswith(var.api_origin_certificate_arn, "arn:${data.aws_partition.current.partition}:acm:${var.aws_region}:")
-      )
-      error_message = "AP-14.1 requires api_origin_certificate_arn to be an issued ACM certificate ARN in aws_region. The certificate must cover api_origin_domain_name."
+    origin_ssl_protocols {
+      items    = ["TLSv1.2"]
+      quantity = 1
     }
   }
+
+  tags = local.edge_tags
+}
+
+data "aws_security_group" "cloudfront_vpc_origins" {
+  count = var.api_enabled ? 1 : 0
+
+  vpc_id = local.vpc_id
+
+  filter {
+    name   = "group-name"
+    values = ["CloudFront-VPCOrigins-Service-SG"]
+  }
+
+  depends_on = [aws_cloudfront_vpc_origin.api]
+}
+
+resource "aws_vpc_security_group_ingress_rule" "api_alb_from_cloudfront" {
+  count = var.api_enabled ? 1 : 0
+
+  security_group_id            = aws_security_group.api_alb[0].id
+  referenced_security_group_id = data.aws_security_group.cloudfront_vpc_origins[0].id
+  ip_protocol                  = "tcp"
+  from_port                    = 80
+  to_port                      = 80
+  description                  = "CloudFront VPC origin to internal API ALB"
 }
 
 resource "aws_cloudfront_distribution" "api" {
@@ -132,21 +120,18 @@ resource "aws_cloudfront_distribution" "api" {
   price_class     = "PriceClass_100"
 
   origin {
-    domain_name = var.api_origin_domain_name
-    origin_id   = "api-alb-https"
+    domain_name = aws_lb.api[0].dns_name
+    origin_id   = "api-alb"
 
-    custom_origin_config {
-      http_port                = 80
-      https_port               = 443
-      origin_protocol_policy   = "https-only"
-      origin_ssl_protocols     = ["TLSv1.2"]
+    vpc_origin_config {
+      vpc_origin_id            = aws_cloudfront_vpc_origin.api[0].id
       origin_read_timeout      = 60
       origin_keepalive_timeout = 5
     }
   }
 
   default_cache_behavior {
-    target_origin_id         = "api-alb-https"
+    target_origin_id         = "api-alb"
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD", "OPTIONS"]
@@ -157,7 +142,7 @@ resource "aws_cloudfront_distribution" "api" {
 
   ordered_cache_behavior {
     path_pattern             = "/auth/*"
-    target_origin_id         = "api-alb-https"
+    target_origin_id         = "api-alb"
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD", "OPTIONS"]
@@ -168,7 +153,7 @@ resource "aws_cloudfront_distribution" "api" {
 
   ordered_cache_behavior {
     path_pattern             = "/api/*"
-    target_origin_id         = "api-alb-https"
+    target_origin_id         = "api-alb"
     viewer_protocol_policy   = "redirect-to-https"
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD", "OPTIONS"]
@@ -190,17 +175,7 @@ resource "aws_cloudfront_distribution" "api" {
 
   tags = local.edge_tags
 
-  depends_on = [aws_lb_listener.api_https_cloudfront]
-
-  lifecycle {
-    precondition {
-      condition = (
-        var.api_origin_domain_name != null &&
-        can(regex("^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$", var.api_origin_domain_name))
-      )
-      error_message = "AP-14.1 requires api_origin_domain_name: a DNS hostname covered by the regional ALB certificate and resolving to this ALB."
-    }
-  }
+  depends_on = [aws_vpc_security_group_ingress_rule.api_alb_from_cloudfront]
 }
 
 output "api_cloudfront_domain_name" {
