@@ -239,7 +239,7 @@ resource "aws_security_group" "api" {
 }
 
 resource "aws_security_group" "secretsmanager_endpoint" {
-  count = var.create_network ? 1 : 0
+  count = var.create_network && var.enable_interface_vpc_endpoints ? 1 : 0
 
   name        = "${local.name_prefix}-secretsmanager-endpoint"
   description = "Allow ECS tasks to reach Secrets Manager through a VPC endpoint"
@@ -263,7 +263,7 @@ resource "aws_security_group" "secretsmanager_endpoint" {
 }
 
 resource "aws_vpc_endpoint" "secretsmanager" {
-  count = var.create_network ? 1 : 0
+  count = var.create_network && var.enable_interface_vpc_endpoints ? 1 : 0
 
   vpc_id              = local.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
@@ -276,7 +276,7 @@ resource "aws_vpc_endpoint" "secretsmanager" {
 }
 
 resource "aws_security_group" "ecr_endpoint" {
-  count = var.create_network ? 1 : 0
+  count = var.create_network && var.enable_interface_vpc_endpoints ? 1 : 0
 
   name        = "${local.name_prefix}-ecr-endpoint"
   description = "Allow ECS tasks to reach ECR through VPC endpoints"
@@ -300,7 +300,7 @@ resource "aws_security_group" "ecr_endpoint" {
 }
 
 resource "aws_vpc_endpoint" "ecr_api" {
-  count = var.create_network ? 1 : 0
+  count = var.create_network && var.enable_interface_vpc_endpoints ? 1 : 0
 
   vpc_id              = local.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
@@ -313,7 +313,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 }
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
-  count = var.create_network ? 1 : 0
+  count = var.create_network && var.enable_interface_vpc_endpoints ? 1 : 0
 
   vpc_id              = local.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
