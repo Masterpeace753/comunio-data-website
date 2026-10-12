@@ -15,18 +15,23 @@ resource "aws_cloudfront_cache_policy" "api_no_cache" {
   count = var.api_enabled ? 1 : 0
 
   name        = "${local.name_prefix}-api-no-cache"
-  comment     = "AP-14.1: zero TTL; Authorization is included only to forward it to the API origin."
+  comment     = "AP-14.1: default TTL 0; Authorization is included only to forward it to the API origin."
   default_ttl = 0
-  max_ttl     = 0
+  max_ttl     = 1
   min_ttl     = 0
 
   parameters_in_cache_key_and_forwarded_to_origin {
+    # CloudFront rejects headers in a policy with all TTLs at 0. A 1s max TTL with
+    # default 0 caches nothing unless the origin sends explicit cache headers; the
+    # session cookie and Authorization are in the cache key so users never share entries.
     cookies_config {
-      cookie_behavior = "none"
+      cookie_behavior = "whitelist"
+
+      cookies {
+        items = ["token"]
+      }
     }
 
-    # CloudFront requires Authorization to be included in a cache policy to
-    # forward it. Zero TTLs ensure this never creates an authorization cache.
     headers_config {
       header_behavior = "whitelist"
 

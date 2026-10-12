@@ -367,3 +367,8 @@ variable "login_retry_wait_seconds" {
   default     = 300
 }
 
+variable "enable_interface_vpc_endpoints" {
+  description = "Create Secrets Manager and ECR interface VPC endpoints (about 40 EUR/month). Not needed while ECS tasks run in public subnets with public IPs."
+  type        = bool
+  default     = true
+}
