@@ -1,10 +1,11 @@
-# VPS deployment slice (not approved for production)
+# VPS deployment and cutover
 
 This directory contains a deployment definition for a single Ubuntu VPS:
 PostgreSQL, a one-shot Ingest container, and an optional API container with a
 systemd **user** timer. The API is in an opt-in Compose profile, has no
-published backend port, and has no HTTPS ingress or reverse proxy in this
-slice. AWS files and deployment definitions are not changed.
+published backend port. An additional, separately gated Compose overlay
+provides a proposed HTTPS reverse proxy; the base deployment does not expose
+it. AWS files and deployment definitions are not changed.
 
 CI builds the Ingest and API images, checks the rendered Compose profiles and
 security boundaries with `python infra/vps/tests/test_compose.py`, checks the
@@ -15,15 +16,23 @@ recognize the Compose file in a local check; the explicit Compose assertions
 are therefore the VPS configuration gate. These checks do not start the VPS
 stack or prove TLS, volume persistence, scheduler execution, or restore.
 
-**No cutover is approved. Do not enable the timer or run a live Ingest.**
+**Cutover is in progress; frontend detail-page deployment and acceptance are outstanding.**
+The AWS ingest rule is disabled. A final backup was restored and checked on
+the VPS, one manual VPS ingest succeeded, and the VPS timer was enabled.
+See the [validation report](validation-report-2026-11-07.md) for the recorded
+state; do not start a second writer or retire AWS rollback resources.
 The operator reports that the AWS API is live; older repository documentation
 describes it as disabled, so verify the actual state before any plan or change.
 Do not disable the AWS API or its dependencies before a separately approved
-cutover. The source RDS version is not established by this repository. The
-current operator also lacks sudo, user lingering is disabled, and monitoring
-and a tested restore are outstanding. Those are deployment blockers, not
-configuration steps this directory can bypass. No server access or production
-action is performed by these files.
+cutover. The source RDS reported PostgreSQL 16.14 in a read-only AWS check on
+2026-11-07; version and compatibility must be reconfirmed before migration.
+`serveradmin` is in the sudo group, but non-interactive sudo is unavailable.
+Lingering for that account was verified enabled on 2026-11-07. A preliminary
+backup and the final post-freeze backup were restored and checked. Automated
+monitoring and alerting are deliberately deferred until after migration and
+are not a cutover gate. The operator has also accepted having no manual
+checks initially; failures and gaps may therefore go unnoticed. One-time
+cutover and stabilization acceptance checks are still required.
 
 ## What this deployment does and does not do
 
@@ -53,9 +62,9 @@ action is performed by these files.
 - `pg_hba.conf` permits local peer administration and TLS certificate
   authentication for the Ingest and gated API roles. It rejects non-TLS TCP
   connections.
-- There is no HTTPS ingress or reverse proxy. Do not publish the API port or
-  add a proxy as a shortcut. Public API activation requires a separate design
-  and approval after the trusted-proxy/header and authentication gates below.
+- `compose.https.yaml` adds an opt-in HTTPS proxy for the API, but the base
+  Compose file does not publish HTTP, HTTPS, or Uvicorn ports. Public API
+  activation requires the tests and separate approval described below.
 - The database image has no default major version. Select and pin the image
   only after checking the actual RDS engine version, extensions, collation,
   encoding, schema, and supported upgrade/dump-restore path. Never use `latest`.
@@ -73,6 +82,7 @@ Repository files:
 
 - `compose.yaml`: DB and one-shot Ingest services, networks, volume, and
   read-only file mounts, plus the opt-in empty-volume permission helper.
+- `compose.https.yaml` and `Caddyfile`: separately gated HTTPS ingress.
 - `postgres/pg_hba.conf`: database access policy.
 - `systemd/comunio-ingest@.service` and `.timer`: shared-lock one-shot and
   daily UTC schedule.
@@ -86,6 +96,8 @@ Create these directories **outside the repository** on the VPS:
   `api-database-url` (only when preparing the separately gated API profile);
 - a TLS directory containing `ca.crt`, `server.crt`, `server.key`,
   `ingest.crt`, `ingest.key`, and optionally `api.crt`/`api.key`;
+- a separate private, persistent Caddy data directory for HTTPS certificates
+  and their private keys, writable only by the selected Caddy UID/GID;
 - `%h/.config/comunio-vps.env`, containing non-secret Compose settings only.
 
 Never put private keys, DB URLs, Comunio credentials, backups, or dumps in Git,
@@ -110,16 +122,22 @@ deployment:
    Choose a destination major only after a compatibility review and a
    successful isolated restore. Set `POSTGRES_IMAGE` to an immutable
    version-and-digest reference for that choice. Set `PGDATA` and the volume
-   target to the data path supported by that exact image. The current source
-   version is not established by this repository, so this plan deliberately
-   selects no PostgreSQL major version.
+   target to the data path supported by that exact image. Although the source
+   reported PostgreSQL 16.14 on 2026-11-07, this plan deliberately selects no
+   target image until the compatibility and restore checks are complete.
 4. Build and approve the Ingest image, then set `INGEST_IMAGE` to its immutable
    digest reference. The runtime Compose definition does not build images on
    the VPS.
 5. Select stable non-root numeric IDs. Set `APP_UID`/`APP_GID` to the process
    identity used by the Ingest and API containers and `POSTGRES_UID`/`POSTGRES_GID` to
-   the `postgres` identity in the exact pinned database image. Verify these
+   the PostgreSQL identity in the exact pinned database image. Verify these
    IDs against each image before creating host files or the data volume.
+   Check host account and group assignments as well: a container GID may
+   correspond to an unrelated host group with access to group-readable
+   secrets. On the checked VPS, image GIDs 101 and 999 map to `messagebus`
+   and `systemd-journal` respectively; do not use them for secret-file
+   groups. Choose unused, isolated numeric host GIDs and verify the images
+   work with the selected UID/GID pairs before provisioning files.
 6. Prepare TLS materials through an approved CA process:
    - a private CA certificate (`ca.crt`) trusted by both PostgreSQL and the
      Ingest client;
@@ -131,16 +149,23 @@ deployment:
    Keep CA private keys offline. Private service keys must be unencrypted for
    unattended PostgreSQL/libpq startup unless a separately tested credential
    unlock mechanism is approved; protect them with restricted host access and
-   encrypted host storage. Do not copy CA private keys to the VPS.
+   host storage. The operator has explicitly accepted unencrypted VPS storage
+   initially; encrypting database data and service keys remains a
+   post-migration TODO in the [migration plan](../../docs/migration/00-gesamtplan.md).
+   Restricted host access and file permissions remain mandatory. Do not copy
+   CA private keys to the VPS.
 7. Prepare `comunio.json` as UTF-8 JSON with the existing
    `{"username": "...", "password": "..."}` shape. Prepare `database-url` as
-   a PostgreSQL DSN with **no password**, for example the following non-secret
+   a PostgreSQL URI with **no password**, using the following non-secret
    connection parameters:
 
    `host=db`, the selected database and role, `sslmode=verify-full`,
    `sslrootcert=/run/certs/ca.crt`, `sslcert=/run/certs/ingest.crt`, and
    `sslkey=/run/certs/ingest.key`.
 
+   The application requires URI syntax (not libpq keyword/value DSN syntax).
+   For example, the Ingest URL without a password is
+   `postgresql://comunio_ingest@db/comunio?sslmode=verify-full&sslrootcert=/run/certs/ca.crt&sslcert=/run/certs/ingest.crt&sslkey=/run/certs/ingest.key`.
    The URL is read from `DATABASE_URL_FILE`; credentials to PostgreSQL are
    client-certificate based, not password-based. The hostname must remain
    `db`, and the server certificate must include `DNS:db`.
@@ -150,6 +175,14 @@ deployment:
    Ingest or API. The Ingest role gets only the DDL/DML rights needed by the
    currently supported migrations and job. The API role, if provisioned,
    gets `SELECT` only on the approved tables/views; prove writes are denied.
+   The preliminary isolated restore was tested with `comunio_ingest` owning
+   the database and restored objects, and `comunio_api_readonly` granted schema
+   usage and table SELECT. Default SELECT privileges were set **for the
+   Ingest owner** so new tables remain readable. CREATE and TEMPORARY database
+   privileges were revoked from PUBLIC, and the API role's default
+   transaction mode was set read-only. Verify permission-denied writes with
+   the default transaction mode explicitly overridden; the role setting
+   alone is not a security boundary.
 9. Create host directories and files with an approved owner/mode plan:
    - each Ingest-readable file is owned by `root` and the numeric
      `APP_GID`, mode `0440`; the Ingest process runs with that primary GID;
@@ -173,9 +206,10 @@ deployment:
     `API_IMAGE` reference and reviewed `API_ALLOWED_ORIGINS`.
     `INGEST_RUN_TYPE` is set by the systemd template instance (`manual` or
     `scheduled`), not by this file.
-11. Monitoring/alerting and a protected migration backup with a successful
-    restore test are not yet established. Define and test them before any
-    production timer or cutover.
+11. Protected preliminary and final migration backups have been restored and
+    checked; deployment and acceptance of the frontend detail-page fix remain outstanding.
+    Automated monitoring and manual checks are both deferred by operator
+    decision; this leaves failures and gaps potentially unnoticed.
 
 ## Initial database and Compose procedure
 
@@ -296,20 +330,23 @@ The timer is not enabled by these files. Once every operational gate passes,
 an authorized administrator must enable user lingering for the deployment
 account (for example via `loginctl enable-linger <user>`); this requires host
 administrative authority. Verify `Linger=yes`. Without lingering, the user
-manager/timer will not reliably survive logout or run after boot. The current
-account has no sudo and lingering is disabled, so installation/activation is
-currently blocked.
+manager/timer will not reliably survive logout or run after boot.
+As of 2026-11-07, lingering is enabled for `serveradmin` and the Comunio
+timer is not installed. Verify lingering again for the actual deployment
+account; non-interactive sudo is unavailable, so further administrative
+steps require the administrator's participation.
 
 Install the user units under
 `~/.config/systemd/user/`, then reload the user manager. Keep the timer
-disabled until backup/restore, TLS/secret checks, monitoring, and the explicit
-production approval are complete. Manual tests should use
+disabled until backup/restore, TLS/secret checks, the remaining operational
+gates, and explicit production approval are complete. Manual tests should use
 `comunio-ingest@manual.service` so they use the same lock as the timer.
 
 ## Optional API profile — separate release only
 
 The `api` service is defined but is not part of the default Compose profile.
-It has no host-published port and the Compose file contains no reverse proxy.
+It has no host-published port; HTTPS is available only through the separate
+overlay described below.
 Its required files are distinct from Ingest:
 
 - `api-auth.json` for `AUTH_SECRET_FILE` (the validated
@@ -324,16 +361,48 @@ entry alone does not grant data access; the role must have explicit `SELECT`
 grants only, and negative write tests must pass. API secret files are mounted
 only into the API container, not the Ingest service.
 
-No HTTPS ingress is included because a safe public path cannot be established
-from this repository-only change: domain/DNS/certificate ownership, external
-firewall, trusted proxy peer, and forwarded-header policy have not been
-verified. The current backend auth logic recognizes
-`CloudFront-Viewer-Address`; that is not a trusted Contabo proxy contract.
-Before any API activation, separately prove that client-supplied forwarding
-headers are stripped, the backend trusts only the designated proxy peer, the
-proxy is the only network path to Uvicorn, HTTPS is enforced, and the Vercel
-proxy/auth/CORS/session flows pass end-to-end tests. Until then, do not start
-the `api` profile, expose port 8000, or change the Vercel origin.
+The VPS profile selects a global, in-memory login limit of five attempts per
+five minutes and explicitly starts one API worker. Forged viewer-address
+headers cannot select another bucket. The operator accepts that all users can
+be locked out together and that a restart resets the limit. Do not scale the
+API to multiple processes or replicas with this temporary protection. A
+persistent, shared limiter remains a post-migration TODO; the AWS default
+client-based behavior is unchanged.
+
+The optional HTTPS overlay connects Caddy and the API over a dedicated
+internal network. Only Caddy publishes ports 80 and 443; API and DB ports
+remain unpublished. Caddy removes `CloudFront-Viewer-Address` and `Forwarded`;
+the API disables Uvicorn proxy-header handling and uses the global limiter
+above. Caddy obtains and renews public certificates and must retain its
+private, persistent data directory. Restrict its access; the operator has
+accepted unencrypted VPS storage temporarily, including certificate keys.
+
+Before use, pin `CADDY_IMAGE` to an approved immutable digest, set numeric
+non-root `CADDY_UID`/`CADDY_GID`, set `API_DOMAIN` to the approved hostname
+only (no scheme, port, path, or Caddy syntax), and set
+`VPS_CADDY_DATA_DIR` to an existing absolute path outside the repository.
+Create it with restrictive ownership and permissions, writable by that UID/GID,
+and verify container access without making it world-writable. Do not reuse
+the application or database secret directories.
+
+Render the overlay before any activation:
+
+```sh
+docker compose --env-file "$HOME/.config/comunio-vps.env" \
+  --project-directory "$HOME/comunio/infra/vps" \
+  -f "$HOME/comunio/infra/vps/compose.yaml" \
+  -f "$HOME/comunio/infra/vps/compose.https.yaml" \
+  --profile api config
+```
+
+Public DNS, IPv4/IPv6, certificate issuance and renewal, host and provider
+firewalls and Docker-published ports must be checked on the actual VPS.
+Only port 80/443 may reach the proxy; neither 5432 nor 8000 may be publicly
+reachable. Before any API activation, separately prove header handling,
+network isolation, HTTPS, and Vercel proxy/auth/CORS/session flows end to end.
+An isolated Caddy test using an internal test CA is not proof of public ACME
+issuance. Until these gates pass and activation is separately approved, do not
+start the `api` or proxy services or change the Vercel origin.
 
 The operator reports that the AWS API is live. Keep it and its database/API
 dependencies running until a separately approved, verified cutover. This
@@ -373,14 +442,20 @@ Run all checks in an isolated environment with synthetic test credentials:
   inspect the calendar with `systemd-analyze calendar`, test missed-run
   behavior and lock contention, and confirm the systemd service returns the
   Compose job's nonzero exit status.
-- Test external monitoring/heartbeat and alert delivery before activating the
-  timer. Monitoring is currently outstanding.
+- Automated monitoring and alerting remain outstanding. The operator has
+  accepted that there will initially be no manual checks either.
+
+**Post-migration TODO:** Select and set up monitoring and alert delivery for
+failed or missing Ingest runs, API availability, disk/resource exhaustion, and
+backup failures once regular backups exist. Test failure and missing-heartbeat
+alerts and delivery, and assign an owner and due date. Until then, failures
+or gaps can go unnoticed.
 
 **Production NO-GO:** no cutover, no live VPS writer, no timer enablement, and
 no AWS changes until the source RDS version and live AWS services (including
 the reported-live API) are verified, migration backup/restore is proven, all
-tests and monitoring pass, the VPS administrator enables lingering and
-required host access, and the operator explicitly approves the cutover. API
+remaining required tests pass, lingering and required host access are verified,
+and the operator explicitly approves the cutover. API
 activation additionally requires separate TLS, trusted-proxy/header, auth,
 read-only-role, and Vercel end-to-end approval. Keep the AWS API active until
 that cutover is separately approved and verified.

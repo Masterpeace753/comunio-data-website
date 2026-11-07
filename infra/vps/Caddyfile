@@ -1,0 +1,19 @@
+{
+	admin off
+	http_port 8080
+	https_port 8443
+	servers {
+		protocols h1 h2
+	}
+}
+
+http://{$API_DOMAIN}:8080 {
+	redir https://{$API_DOMAIN}{uri} permanent
+}
+
+{$API_DOMAIN} {
+	reverse_proxy api:8000 {
+		header_up -CloudFront-Viewer-Address
+		header_up -Forwarded
+	}
+}

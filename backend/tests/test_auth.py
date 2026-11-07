@@ -205,6 +205,45 @@ def test_login_rate_limit_uses_cloudfront_viewer_address(client: TestClient) -> 
     assert allowed.status_code == 200
 
 
+def test_global_login_limit_ignores_forged_viewer_addresses(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(auth, "LOGIN_RATE_LIMIT_SCOPE", "global")
+    for index in range(auth.LOGIN_ATTEMPT_LIMIT):
+        response = client.post(
+            "/auth/login",
+            json=login_payload(password="incorrect"),
+            headers={"Origin": ORIGIN, "CloudFront-Viewer-Address": f"203.0.113.{index + 1}:12345"},
+        )
+        assert response.status_code == 401
+
+    limited = client.post(
+        "/auth/login",
+        json=login_payload(),
+        headers={"Origin": ORIGIN, "CloudFront-Viewer-Address": "203.0.113.99:12345"},
+    )
+    assert limited.status_code == 429
+    auth.reset_login_rate_limit()
+    assert client.post("/auth/login", json=login_payload(), headers={"Origin": ORIGIN}).status_code == 200
+
+
+@pytest.mark.parametrize("scope", ["", "per-user", "globall"])
+def test_invalid_login_rate_limit_scope_fails_closed(monkeypatch, scope: str) -> None:
+    monkeypatch.setenv("LOGIN_RATE_LIMIT_SCOPE", scope)
+    with pytest.raises(RuntimeError, match="LOGIN_RATE_LIMIT_SCOPE must be client or global"):
+        auth._load_login_rate_limit_scope()
+
+
+def test_login_rate_limit_scope_defaults_to_client(monkeypatch) -> None:
+    monkeypatch.delenv("LOGIN_RATE_LIMIT_SCOPE", raising=False)
+    assert auth._load_login_rate_limit_scope() == "client"
+
+
+def test_global_login_limit_expires_after_five_minutes() -> None:
+    for _ in range(auth.LOGIN_ATTEMPT_LIMIT):
+        assert auth._consume_login_attempt("global", now=100.0)
+    assert not auth._consume_login_attempt("global", now=399.999)
+    assert auth._consume_login_attempt("global", now=400.0)
+
+
 @pytest.mark.parametrize("origin", ["https://attacker.example", None])
 def test_mutating_requests_reject_untrusted_or_missing_origin(
     client: TestClient, origin: str | None

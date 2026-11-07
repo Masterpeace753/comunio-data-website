@@ -240,9 +240,20 @@ services:
     profiles:
       - api
     user: "${APP_UID:?Set APP_UID for the container process}:${APP_GID:?Set APP_GID for the container process}"
+    command:
+      - uvicorn
+      - src.api.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-proxy-headers
+      - --workers
+      - "1"
     environment:
       APP_ENV: production
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-}
+      LOGIN_RATE_LIMIT_SCOPE: global
       AUTH_SECRET_FILE: /run/secrets/auth.json
       API_PROXY_SECRET_FILE: /run/secrets/api-proxy-secret
       DATABASE_URL_FILE: /run/secrets/api-database-url

@@ -1,0 +1,55 @@
+services:
+  api:
+    networks:
+      - database
+      - api-ingress
+
+  proxy:
+    image: ${CADDY_IMAGE:?Set CADDY_IMAGE to an approved immutable image reference}
+    profiles:
+      - api
+    user: "${CADDY_UID:?Set CADDY_UID}:${CADDY_GID:?Set CADDY_GID}"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN to the approved API hostname}
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /tmp
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${VPS_CADDY_DATA_DIR:?Set VPS_CADDY_DATA_DIR outside the repository}
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      - api-ingress
+      - proxy-outbound
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  api-ingress:
+    internal: true
+  proxy-outbound:
+    driver: bridge

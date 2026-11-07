@@ -23,8 +23,10 @@ read-only AWS-Abgleich vom 07.11.2026 widerlegt: Die API ist aktiv. Der
 Betreiber hat entschieden, sie ebenfalls sicher auf den VPS zu migrieren.
 Auf Wunsch des Betreibers wird außerdem die
 Einrichtung regelmäßiger Backups auf später verschoben; die einmalige
-Migrationssicherung und Restore-Probe bleiben Pflicht. Die Einzelpläne
-geben die ursprünglichen, unabhängig erstellten Empfehlungen wieder.
+Migrationssicherung und Restore-Probe bleiben Pflicht. Auf automatisiertes
+Monitoring und Alerting wird zum Start bewusst verzichtet; sie werden nach
+der Migration nachgerüstet. Die Einzelpläne geben die ursprünglichen,
+unabhängig erstellten Empfehlungen wieder.
 
 ## 1. Ziel und Geltungsbereich
 
@@ -74,7 +76,7 @@ flowchart LR
   end
   PG -. später .-> OFF[regelmäßiges verschlüsseltes externes Backup]
   V[Vercel-Frontend] -->|HTTPS und Proxy-Authentifizierung| RP
-  M[externes Monitoring] -->|Heartbeat und Alarm| VPS
+  M[externes Monitoring<br/>nach der Migration] -.->|Heartbeat und Alarm| VPS
 ```
 
 PostgreSQL erhält keinen öffentlich erreichbaren Port. Ein dediziertes
@@ -94,11 +96,12 @@ nicht automatisch.
 | Scheduler | systemd-Timer mit expliziter UTC-Zeit und Schutz vor parallelen Läufen. Verpassten Lauf nach Neustart einmal nachholen; Sommer-/Winterzeit testen. Ein systemd-Benutzerdienst wird geprüft, sofern dauerhafter Betrieb nach Abmeldung/Neustart gewährleistet ist. |
 | Datenbank | PostgreSQL-Hauptversion und Erweiterungen der RDS-Quelle vorab ermitteln; kompatible Zielversion und Dump-/Restore-Tools festlegen. |
 | Secrets | Geschützte Host-Dateien, gezielt und nur lesbar in benötigte Container eingebunden; Zugriff mit tatsächlichen Container-UIDs prüfen. Kein Secret in Git, Image, Logs, Prozessargumenten oder Beispielwerten. |
+| VPS-Speicher | Der Betreiber akzeptiert zum Start ausdrücklich das Risiko unverschlüsselter Speicherung von Datenbankdaten und Dienstschlüsseln auf dem VPS. Zugriffsrechte bleiben Pflicht; die Verschlüsselung des Datenspeichers und ein praktikables Entsperrverfahren sind ein offenes TODO nach der Migration. |
 | Backup | Einmalige Migrationssicherung und Restore-Probe vor Cutover sind Pflicht. Regelmäßige externe Backups und deren Automatisierung folgen später; Aufbewahrung, Speicherort, Schlüssel und Kosten sind offen. |
-| RPO / RTO | Maximal tolerierbaren Datenverlust und Wiederanlaufzeit mit Betreiber festlegen; aus Tagesrhythmus keine Zusage ableiten. |
+| RPO / RTO | Betreiber akzeptiert mehrere Stunden Ausfallzeit und beim Rückfall im Notfall den Verlust eines Tageslaufs, falls die Rückübertragung scheitert. Ein konkretes Zeitlimit und eine nachgewiesene Wiederanlaufzeit sind noch festzulegen; dies ist keine generelle RPO-/RTO-Zusage. |
 | API / Domain | Bei späterer Aktivierung erreichbare Domain, DNS, Zertifikate, Vercel-Konfiguration und vertrauenswürdige Proxy-Kette entscheiden. |
 | Betrieb | Verantwortliche für Updates, Monitoring, Alarme, Migrationssicherung und Bereitschaft festlegen; Verantwortung für den späteren Backupbetrieb zuweisen. |
-| Monitoring | Externer Monitoring-Dienst wird später ausgewählt und eingerichtet (offenes TODO). Bis zum nachgewiesenen Fehler- und Missing-Heartbeat-Alarm bleibt der produktive Cutover entsprechend den bestehenden Gates gesperrt. |
+| Monitoring | Zum Start bewusst kein automatisiertes Monitoring oder Alerting; Auswahl, Einrichtung und Alarmtests folgen nach der Migration als offenes TODO. Dieser Verzicht allein sperrt den Cutover nicht; die übrigen Freigabe- und Sicherheits-Gates bleiben bestehen. |
 | AWS als Deployment-Option | AWS-Konfiguration und -Betriebsdokumentation im Repository behalten und zunächst weiterhin testen. Nach der Migration entscheiden, ob AWS dauerhaft als unterstütztes Ziel gepflegt wird. Vorhandener Code allein garantiert keinen funktionsfähigen Rückfall. |
 
 ### Repository- und Deployment-Schnitt
@@ -158,16 +161,16 @@ ohne Zugriff auf ungeschützte Daten möglich; Betreiberfreigabe liegt vor.
    Die bestehende AWS-Secret-Integration erhalten und beide Provider testen.
 4. PostgreSQL-TLS, separate Schreib- und API-Leserollen sowie Dateizugriff
    durch den nicht privilegierten Container-Benutzer einrichten und testen.
-5. Timer mit 06:00 **UTC**, Überlappungsschutz, Fehler- und
-   Missing-Heartbeat-Alarm aufsetzen. Login-Retry und Wiederanlaufverhalten
-   gegenüber dem AWS-Vertrag prüfen.
-6. Log-Retention und Benachrichtigung aufbauen. Die einmalige
+5. Timer mit 06:00 **UTC** und Überlappungsschutz aufsetzen. Login-Retry und
+   Wiederanlaufverhalten gegenüber dem AWS-Vertrag prüfen. Fehler- und
+   Missing-Heartbeat-Alarme werden nach der Migration eingerichtet.
+6. Log-Retention einrichten. Die einmalige
    Migrationssicherung geschützt und verschlüsselt außerhalb des VPS
    aufbewahren und ihre Restore-Prozedur dokumentieren. Regelmäßige
-   Backups und Backup-Überwachung werden nicht in dieser Phase eingerichtet.
+   Backups und Alarmierung werden nicht in dieser Phase eingerichtet.
 
 **Gate:** Tests auf isolierter Umgebung, negativer Secret-/Rechtetest,
-Restore-Probe der Migrationssicherung und Alarmtest erfolgreich; kein
+Restore-Probe der Migrationssicherung erfolgreich; kein
 produktiver Ingest aktiviert.
 
 ### Phase 2 – Generalprobe der Datenmigration
@@ -198,20 +201,21 @@ nachweislich erfolgreich; Cutover-Zeitfenster und Rückfall getestet.
    übertragen und auf dem vorbereiteten Ziel wiederherstellen. Mit einem
    unabhängig gesicherten Backup und einem klaren Quell-Zeitpunkt arbeiten;
    vorhandene Probedaten dürfen den finalen Restore nicht verfälschen.
-3. Daten und `schema_migrations` erneut vergleichen, Rechte, TLS,
-   Migrationssicherung und Monitoring prüfen. Quelle weiterhin unverändert
+3. Daten und `schema_migrations` erneut vergleichen, Rechte, TLS und
+   Migrationssicherung prüfen. Quelle weiterhin unverändert
    behalten.
 4. Nach ausdrücklichem Go den VPS-Writer aktivieren und genau einen
    kontrollierten Live-Lauf durchführen; Zeitfenster und Ergebnis im
    Betriebsprotokoll festhalten. Timer erst danach aktivieren.
-5. Nächsten geplanten 06:00-UTC-Lauf, Heartbeat und Log-Ereignisse prüfen;
+5. Nächsten geplanten 06:00-UTC-Lauf und Log-Ereignisse manuell prüfen;
    der AWS-Schedule bleibt währenddessen deaktiviert.
 6. Die auf dem VPS abgenommene API über HTTPS und den Vercel-Proxy
    umschalten; bis dahin zeigt die AWS-API weiterhin auf den alten Datenstand.
    Dieses Wartungsfenster vorab ankündigen und nur mit Freigabe durchführen.
 
 **Gate:** Datenabgleich und kontrollierter Lauf erfolgreich, genau ein
-Scheduler aktiv, keine Duplikate, Fehler- und Ausfallalarm funktionieren.
+Scheduler aktiv, keine Duplikate. Automatisierte Fehler- und Ausfallalarme
+folgen nach der Migration.
 
 ### Phase 4 – Stabilisierung und AWS-Abbau
 
@@ -229,6 +233,21 @@ Scheduler aktiv, keine Duplikate, Fehler- und Ausfallalarm funktionieren.
    Aufbewahrung, Zugriff auf State und Wiederherstellung berücksichtigen.
    Kein pauschales `terraform destroy`.
 
+### Nachgelagert – Monitoring und Alerting
+
+- [ ] Nach der Migration einen Monitoring-Dienst und Alarmierungsweg auswählen,
+  Verantwortliche und Termin festlegen und Überwachung für fehlende oder
+  fehlgeschlagene Ingest-Läufe, API-Erreichbarkeit, Speicherplatz und
+  Ressourcen sowie nach Einführung regelmäßiger Backups deren Erfolg
+  einrichten. Fehler-, Missing-Heartbeat- und Alarmzustellungstests durchführen.
+
+Bis dahin können Ausfälle, fehlende Läufe oder Datenlücken unbemerkt bleiben;
+der Betreiber hat vorerst auch auf manuelle Kontrollen verzichtet und dieses
+Risiko akzeptiert. Eine verlässliche Erkennung von Ausfällen ist daher nicht
+gewährleistet. Die einmaligen Prüfungen und Abnahmen während Cutover und
+Stabilisierung bleiben erforderlich. Dieser Verzicht ist keine Freigabe für
+den Cutover und ersetzt keine anderen Gates.
+
 ### Nachgelagert – regelmäßige Backups
 
 Nach dem Umzug externe, verschlüsselte und regelmäßig ausgeführte
@@ -239,6 +258,54 @@ gesicherten Stand; spätere VPS-Daten können bei einem Ausfall verloren gehen.
 Ein definiertes RPO/RTO ist ohne passenden Sicherungs- und Wiederanlaufprozess
 nicht nachgewiesen. Vor dem AWS-Abbau dieses Restrisiko ausdrücklich bewerten
 und freigeben; die einmalige Sicherung und ihren Schlüssel sicher aufbewahren.
+
+Für die einmalige Migrationssicherung ist der lokale Rechner als
+Zwischenspeicher vorgesehen. Als Vorgehen einen konsistenten PostgreSQL-Dump über einen
+autorisierten privaten AWS-Netzpfad erstellen, verschlüsselt außerhalb von AWS
+und VPS aufbewahren und daraus auf einem isolierten Ziel wiederherstellen.
+Der Rechner muss dafür nicht dauerhaft verfügbar sein. Der lokale
+Sicherungsordner ist dem Betreiber bekannt; eine Verschlüsselungs-Passphrase
+soll separat im Passwortmanager verwahrt werden.
+Exportweg, Verschlüsselungsverfahren, Zugriff und Restore-Ziel sind vor
+Ausführung festzulegen und zu testen. Die RDS-Instanz ist nicht öffentlich;
+am 07.11.2026 war keine SSM-verwaltete Instanz vorhanden und ECS Exec für den
+laufenden API-Service deaktiviert. Ein autorisierter privater Exportpfad muss
+also gesondert bereitgestellt werden. Der Betreiber hat eine kurzzeitig
+betriebene EC2-/SSM-Instanz und deren Kosten genehmigt. Am 07.11.2026 wurde
+ein konsistenter PostgreSQL-Dump über eine temporäre SSM-Instanz direkt
+OpenPGP-verschlüsselt lokal gespeichert. Das Archiv wurde vollständig
+entschlüsselt und von `pg_restore` gelesen; die temporäre Instanz, ihre
+Netzregel, Sicherheitsgruppe und IAM-Ressourcen wurden wieder entfernt.
+Ein weiterer Dump wurde aus einem festgehaltenen Datenbank-Snapshot erstellt
+und in einer isolierten lokalen PostgreSQL-Datenbank mit temporärem Speicher
+wiederhergestellt. Tabellenmenge und Zeilenzahlen aller neun öffentlichen
+Tabellen stimmten mit demselben Quell-Snapshot überein. Betriebssystem-
+Auslagerung war dabei nicht ausgeschlossen. Nach Abschaltung des
+AWS-Ingest-Zeitplans wurde ein finaler verschlüsselter Dump erstellt, isoliert
+und auf dem VPS wiederhergestellt und anhand von Tabellenzeilenzahlen,
+Spalten, Constraints, Indizes und Sequenzständen geprüft. Ein kontrollierter
+VPS-Ingest war erfolgreich und der VPS-Timer ist aktiviert. Vercel ist auf
+den VPS umgestellt; Login und Listen funktionieren, aber die Korrektur für
+die Detailseiten muss noch deployed und interaktiv abgenommen werden.
+Einzelheiten und Prüfsumme stehen
+im [Validierungsbericht](../../infra/vps/validation-report-2026-11-07.md).
+Das bestehende Exportskript, das Daten über Logs ausgibt, darf
+dafür nicht verwendet werden. Die am 07.11.2026
+vorhandenen automatischen RDS-Snapshots
+mit einer konfigurierten Aufbewahrung von einem Tag sind weder ein
+unabhängiges Offsite-Backup noch eine nachgewiesene Restore-Probe.
+
+### Nachgelagert – VPS-Speicherverschlüsselung
+
+- [ ] Datenbankdaten und Dienstschlüssel auf einem verschlüsselten
+  VPS-Speicher ablegen; Schlüsselverwaltung, Wiederanlauf nach Neustart und
+  Wiederherstellung planen und testen. Termin und Verantwortung festlegen.
+
+Bis dahin sind Daten und Schlüssel bei Zugriff auf ungeschützte Datenträger
+oder deren Kopien nicht durch eine lokale Speicherverschlüsselung geschützt.
+Der Betreiber akzeptiert dieses Risiko vorläufig. Least-Privilege-Zugriff und
+Dateirechte bleiben erforderlich; die Entscheidung ersetzt keine anderen
+Cutover- oder Sicherheitsprüfungen.
 
 ## 6. Rückfall und Datenkonsistenz
 
@@ -260,16 +327,44 @@ Secrets und Vercel-seitige Proxy-Konfiguration. Der bestehende Login nutzt
 CloudFront-spezifische Client-IP-Auswertung; beim Wechsel müssen
 vertrauenswürdige Proxy-Header und das Rate-Limiting Ende-zu-Ende neu
 entworfen und gegen gefälschte Header getestet werden. Der neue Proxy muss
-clientseitig gelieferte Vertrauens-Header entfernen oder überschreiben;
-das pro Prozess gehaltene Login-Limit braucht eine zusätzliche geeignete
-Schutzschicht. Die bestehenden Vercel-Routen reichen keine Client-IP weiter;
-die Herkunft der tatsächlichen Client-IP ist daher am VPS bislang nicht
-nachgewiesen. Vor Freigabe müssen Vercel-seitige IP-Authentizität, ein
-geeigneter gemeinsamer Login-Limiter und das Verhalten bei gefälschten Headern
-geprüft werden; der laufende AWS-CloudFront-Pfad darf dabei nicht versehentlich
-geändert werden. HTTPS, Login,
+clientseitig gelieferte Vertrauens-Header entfernen oder überschreiben.
+Da die bestehenden Vercel-Routen keine verifizierte Client-IP weiterreichen,
+ist für den VPS zum Start ein gemeinsames Login-Limit für alle Nutzer
+vorgesehen: fünf Versuche pro fünf Minuten in genau einem API-Prozess.
+Der Betreiber akzeptiert, dass dadurch alle Nutzer vorübergehend ausgesperrt
+werden können und das Limit bei Neustart zurückgesetzt wird. Ein dauerhaftes,
+prozessübergreifendes Limit bleibt ein späteres TODO. Das VPS-Profil startet
+genau einen Worker und deaktiviert die Auswertung von Proxy-Headern durch
+Uvicorn. Der AWS-CloudFront-Pfad
+behält seine bisherige clientbezogene Behandlung. Vor Freigabe müssen die
+Proxy-Kette, gefälschte Header und das globale Limit Ende zu Ende geprüft
+werden. HTTPS, Login,
 Sessions, Proxy-Authentifizierung, CORS, Health-Checks und
 Wiederherstellung nach Neustart werden separat abgenommen.
+
+- [ ] Nach der Migration einen dauerhaft gespeicherten, prozessübergreifenden
+  Login-Limiter mit geeignetem vertrauenswürdigem Identitätskonzept einrichten
+  und bei Neustart sowie mit mehreren Prozessen testen.
+
+Die bestehende API-Adresse ist die von AWS verwaltete CloudFront-Standarddomain
+ohne eigenen Alias. Ihre Beibehaltung setzt den Weiterbetrieb der Distribution
+voraus; DNS dieser Domain lässt sich nicht direkt auf den VPS umstellen. Für
+einen AWS-unabhängigen API-Endpunkt ist ein eigener Hostname mit gültigem
+TLS-Zertifikat vorgesehen. Der Betreiber hat `masterpeace-comunio-api.de`
+als API-Hostname gewählt; am 07.11.2026 zeigte dessen öffentlicher A-Eintrag
+auf die VPS-IPv4. DNS-Zugang, Erreichbarkeit und Zertifikatsausstellung sind
+vor Freigabe noch zu prüfen. Der Betreiber nennt
+`https://comunio-data-website.vercel.app` als Frontend-Origin; die
+Vercel-Konfiguration und End-to-End-Funktion sind noch zu verifizieren.
+Alternativ sind
+[IP-Adresszertifikate von Let's Encrypt](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/)
+möglich; ihre Laufzeit beträgt nur 160 Stunden und ihre automatische
+Erneuerung muss zuverlässig funktionieren. In jedem Fall sind ein
+abgesicherter, getesteter Zugang und eine angepasste Vercel-Konfiguration nötig.
+Die Umstellung und ihre Auswirkungen auf Proxy-Vertrauen, Rollback,
+AWS-Abhängigkeit und Kosten sind separat zu planen und freizugeben. CloudFront
+bleibt bis dahin bestehen und soll nach erfolgreichem Cutover und Ablauf der
+Rückfallfrist abgebaut werden.
 
 ## 8. Aufwandsrahmen und Einschränkungen
 
