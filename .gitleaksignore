@@ -1,2 +1,4 @@
 # Fake test-only JWT secret in an earlier commit; replaced by a runtime-generated value.
 ecc0456ea3dc78b88746ee59e456253057ac0465:backend/tests/test_api.py:generic-api-key:15
+# False positive: ordinary documentation describing short-lived deploy credentials.
+bda4f1570f6fb52776ed677a720f2e079e2694c2:docs/migration/05-software-engineer.md:generic-api-key:117
