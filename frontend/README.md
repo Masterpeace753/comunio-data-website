@@ -28,6 +28,9 @@ including development and transitive dependencies. It checks Node.js, Next.js
 and React lifecycle status and rejects the deprecated Next.js 16/React 18
 combination. Registry or lifecycle lookup failures fail the check. The explicit
 ESLint exception above is reported on every run; it does not cover other
-versions or packages. CI's npm audit is limited to production dependencies.
+versions or packages. CI's npm audit includes development dependencies.
+The scoped `minimatch` override addresses a development dependency advisory;
+remove it after the upstream TypeScript ESLint dependency accepts a fixed
+version and the complete audit remains clean.
 
 Create a Vercel project with `frontend` as the root directory. Configure `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_SHOW_OWNER_NAME` for Development, Preview, and Production independently. Configure `API_PROXY_SECRET` only on the server environments.

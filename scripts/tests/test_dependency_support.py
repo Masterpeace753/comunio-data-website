@@ -1,6 +1,7 @@
 import importlib.util
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from unittest.mock import patch
 
 
@@ -11,6 +12,28 @@ spec.loader.exec_module(support)
 
 
 class DependencySupportTests(unittest.TestCase):
+    def test_metadata_lookup_retries_transient_errors(self):
+        from io import BytesIO
+
+        with patch.object(support, "urlopen", side_effect=[URLError("offline"), BytesIO(b'{"ok": true}')]) as fetch:
+            with patch.object(support.time, "sleep") as sleep:
+                self.assertEqual(support.fetch_json("https://example.invalid"), {"ok": True})
+        self.assertEqual(fetch.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_metadata_lookup_fails_after_retries_or_permanent_error(self):
+        with patch.object(support, "urlopen", side_effect=URLError("offline")) as fetch:
+            with patch.object(support.time, "sleep"):
+                with self.assertRaisesRegex(RuntimeError, "Support metadata lookup failed"):
+                    support.fetch_json("https://example.invalid")
+        self.assertEqual(fetch.call_count, 3)
+        error = HTTPError("https://example.invalid", 404, "not found", {}, None)
+        with patch.object(support, "urlopen", side_effect=error) as fetch:
+            with self.assertRaisesRegex(RuntimeError, "Support metadata lookup failed"):
+                support.fetch_json("https://example.invalid")
+        self.assertEqual(fetch.call_count, 1)
+        error.close()
+
     def test_lockfile_includes_direct_and_transitive_packages(self):
         lock = {
             "lockfileVersion": 3,

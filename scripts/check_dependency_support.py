@@ -7,10 +7,12 @@ import importlib.metadata
 import json
 import re
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -22,8 +24,16 @@ INACTIVE_CLASSIFIER = "Development Status :: 7 - Inactive"
 
 def fetch_json(url: str) -> dict:
     request = Request(url, headers={"Accept": "application/json", "User-Agent": "comunio-support-check"})
-    with urlopen(request, timeout=30) as response:
-        result = json.load(response)
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=30) as response:
+                result = json.load(response)
+            break
+        except (HTTPError, URLError, TimeoutError) as error:
+            retryable = not isinstance(error, HTTPError) or error.code in (429, 500, 502, 503, 504)
+            if not retryable or attempt == 2:
+                raise RuntimeError(f"Support metadata lookup failed for {url}: {error}") from error
+            time.sleep(2 ** attempt)
     if not isinstance(result, dict):
         raise ValueError(f"Unexpected JSON response from {url}")
     return result
