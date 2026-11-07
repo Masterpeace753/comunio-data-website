@@ -2,7 +2,7 @@
 
 ## Result
 
-**Cutover in progress; detail-page fix and acceptance outstanding.** A separate, isolated test was performed over SSH
+**Frontend cutover live; stabilization and rollback period remain.** A separate, isolated test was performed over SSH
 after the repository-only checks. It used a unique temporary Compose project,
 synthetic certificates and an empty volume, without production data or a live
 Ingest. The test resources were removed; the downloaded PostgreSQL 16.14 image
@@ -130,8 +130,10 @@ recorded separately below.
   The user timer was then enabled, with the next run at 06:00 UTC on
   2026-11-08. The AWS ingest rule remained disabled. Vercel was switched to
   the VPS: successful login and list requests reached the VPS API. Detail
-  routes sent `undefined` IDs and failed; the frontend fix must be deployed
-  and interactively accepted. AWS API and rollback resources remain available.
+  routes initially sent `undefined` IDs; the fix was merged and deployed.
+  The operator confirmed team details, player details and history, and VPS
+  logs showed HTTP 200 for these requests. AWS API and rollback resources
+  remain available.
 - A Windows GnuPG command intended to discard plaintext temporarily created
   `NUL.part` containing a decrypted preliminary dump. The file was removed;
   physical erasure from the underlying storage cannot be guaranteed.
@@ -149,9 +151,9 @@ The following have **not** been run:
 
 - systemd lock contention or missed-run behavior.
 
-The frontend detail-page fix and full interactive acceptance are not yet
-deployed or demonstrated by this report. Keep AWS rollback resources until
-acceptance and the agreed rollback period are complete. Automated
+The first scheduled VPS run, missed-run behavior and restart recovery have
+not yet been verified. Keep AWS rollback resources until stabilization and
+the agreed rollback period are complete. Automated
 monitoring and alerting are deliberately deferred until after migration; manual
 checks are also initially omitted at the operator's accepted risk. See the
 [VPS runbook](README.md) for the outstanding monitoring TODO and current gates.
