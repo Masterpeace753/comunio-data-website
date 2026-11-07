@@ -58,6 +58,35 @@ allowlist containing the Vercel production origin, for example
 
 - For deterministic local tests you can set `COMUNIO_SNAPSHOT_FILE` to a JSON file
   containing `teams`, `players`, and `market_values` arrays.
+- Secret providers support the existing AWS settings and optional mounted files:
+  - `COMUNIO_SECRET_NAME` remains the AWS Secrets Manager JSON secret
+    (`username`, `password`). `COMUNIO_SECRET_FILE` points to a UTF-8 JSON file
+    with the same keys. These two providers are mutually exclusive. A Comunio
+    file cannot be combined with `COMUNIO_EMAIL` or `COMUNIO_PASSWORD`.
+    For backwards compatibility, when the AWS secret name is configured it
+    remains preferred over any legacy `COMUNIO_EMAIL`/`COMUNIO_PASSWORD`
+    fallback values.
+  - `AUTH_SECRET_ARN` remains the AWS Secrets Manager JSON secret with
+    `username`, `passwordHash`, and `jwtSecret`. `AUTH_SECRET_FILE` points to a
+    UTF-8 file with that same JSON shape. The ARN and file options conflict.
+  - `DATABASE_URL_FILE` contains the raw database URL, and
+    `API_PROXY_SECRET_FILE` contains the raw proxy secret. For each of these,
+    its corresponding direct environment variable (`DATABASE_URL` or
+    `API_PROXY_SECRET`) and `*_FILE` option are mutually exclusive.
+    In production, `AUTH_SECRET_FILE` is read and fully validated during API
+    startup; missing, unreadable, or invalid files prevent startup. The
+    `AUTH_SECRET_ARN` Secrets Manager provider remains lazy-loaded.
+  - Raw files may have one final LF or CRLF line ending, which is removed;
+    other whitespace is retained. JSON files follow normal JSON parsing.
+    Files must be non-empty, valid UTF-8, and at most 1 MiB. Read/configuration
+    errors do not include file contents or paths. Production still requires
+    `COMUNIO_REQUIRE_SECRET_MODE=true`, a Comunio AWS or file provider, and
+    both API auth and proxy-secret providers. These checks fail closed.
+  - On a VPS, mount only the required secret files read-only, restrict host
+    permissions to the service/container identity, and keep secret files
+    outside the repository and container image. Do not put secret contents in
+    logs, command arguments, or deployment examples. AWS deployments should
+    continue using their existing AWS settings without configuring `*_FILE`.
 - Scheduler/automation remains the separate AP-9 EventBridge task. The production API
   deployment is a separate ECS service and the cost-optimized MVP uses a public HTTP ALB
   with health checks. Private networking, HTTPS/ACM, WAF and a database reconnect proof

@@ -9,6 +9,7 @@ import boto3
 import requests
 
 from src.config import Settings
+from src.secret_sources import read_secret_file
 
 _API_BASE = "https://api.comunio.de"
 _LOGIN_ENDPOINT = _API_BASE + "/login"
@@ -49,6 +50,17 @@ class ComunioPyClient:
         payload = json.loads(response["SecretString"])
         return ComunioCredentials(email=payload["username"], password=payload["password"], source="secrets_manager")
 
+    def _credentials_from_file(self) -> ComunioCredentials:
+        try:
+            payload = json.loads(read_secret_file(self.settings.comunio_secret_file or "", "COMUNIO_SECRET_FILE"))
+            email = payload["username"]
+            password = payload["password"]
+            if not isinstance(email, str) or not email or not isinstance(password, str) or not password:
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise ComunioLoginError("Invalid COMUNIO_SECRET_FILE contents") from None
+        return ComunioCredentials(email=email, password=password, source="secret_file")
+
     def _credentials_from_env(self) -> ComunioCredentials:
         if not self.settings.comunio_email or not self.settings.comunio_password:
             raise ComunioLoginError("Missing COMUNIO_EMAIL/COMUNIO_PASSWORD")
@@ -59,10 +71,17 @@ class ComunioPyClient:
         )
 
     def load_credentials(self) -> ComunioCredentials:
-        if self.settings.require_secret_mode and not self.settings.comunio_secret_name:
-            raise ComunioLoginError("COMUNIO_SECRET_NAME is required when COMUNIO_REQUIRE_SECRET_MODE is enabled")
+        if self.settings.require_secret_mode and not (
+            self.settings.comunio_secret_name or self.settings.comunio_secret_file
+        ):
+            raise ComunioLoginError(
+                "COMUNIO_SECRET_NAME or COMUNIO_SECRET_FILE is required when "
+                "COMUNIO_REQUIRE_SECRET_MODE is enabled"
+            )
         if self.settings.comunio_secret_name:
             return self._credentials_from_secret()
+        if self.settings.comunio_secret_file:
+            return self._credentials_from_file()
         return self._credentials_from_env()
 
     def _load_snapshot_payload(self, path: Path) -> dict[str, Any]:
@@ -301,4 +320,3 @@ class ComunioPyClient:
             "players": players_out,
             "market_values": values_out,
         }
-

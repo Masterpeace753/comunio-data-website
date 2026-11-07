@@ -19,6 +19,8 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
+from src.secret_sources import read_secret_file
+
 TOKEN_COOKIE_NAME = "token"
 SESSION_TTL_SECONDS = 8 * 60 * 60
 JWT_ISSUER = "comunio-data-api"
@@ -37,19 +39,34 @@ class AuthConfig:
 
 @lru_cache(maxsize=1)
 def get_auth_config() -> AuthConfig:
-    """Load the single-user credentials once per process from Secrets Manager."""
+    """Load single-user credentials once per process from AWS or a mounted file."""
     secret_arn = os.getenv("AUTH_SECRET_ARN")
-    if not secret_arn:
+    secret_file = os.getenv("AUTH_SECRET_FILE")
+    if secret_arn and secret_file:
+        raise RuntimeError("Configure only one of AUTH_SECRET_ARN and AUTH_SECRET_FILE")
+    if secret_file:
+        try:
+            secret_string = read_secret_file(secret_file, "AUTH_SECRET_FILE")
+            value = json.loads(secret_string)
+        except (ValueError, json.JSONDecodeError):
+            raise ValueError("Invalid authentication secret") from None
+    elif secret_arn:
+        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION"))
+        secret_string = client.get_secret_value(SecretId=secret_arn)["SecretString"]
+        value = json.loads(secret_string)
+    else:
         if os.getenv("APP_ENV", "dev").strip().lower() in {"prod", "production"}:
-            raise RuntimeError("AUTH_SECRET_ARN is required in production")
+            raise RuntimeError("AUTH_SECRET_ARN or AUTH_SECRET_FILE is required in production")
         raise RuntimeError("Authentication is not configured")
 
-    client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION"))
-    secret_string = client.get_secret_value(SecretId=secret_arn)["SecretString"]
-    value = json.loads(secret_string)
-    username = value["username"]
-    password_hash = value["passwordHash"]
-    jwt_secret = value["jwtSecret"]
+    if not isinstance(value, dict):
+        raise ValueError("Invalid authentication secret")
+    try:
+        username = value["username"]
+        password_hash = value["passwordHash"]
+        jwt_secret = value["jwtSecret"]
+    except KeyError:
+        raise ValueError("Invalid authentication secret") from None
     if (
         not isinstance(username, str)
         or not username

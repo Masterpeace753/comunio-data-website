@@ -1,0 +1,11 @@
+# Local-only deployment inputs. Never commit secrets, keys, or database files.
+.env
+.env.*
+!*.env.example
+secrets/
+tls/private/
+data/
+*.dump
+*.dump.*
+*.backup
+*.backup.*
