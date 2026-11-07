@@ -1,7 +1,7 @@
 # AWS deployment baseline
 
 Infrastructure-Version: v0.5.4
-Dokumentationsstand: 2026-09-19
+Dokumentationsstand: 2026-10-12
 
 ## AP-14.1: HTTPS CloudFront ingress
 
@@ -17,11 +17,11 @@ that header; it is never cached. The ALB is internal (private subnets) and is re
 VPC origin over HTTP inside AWS's network. Its security group allows TCP/80 only
 from the CloudFront-managed VPC-origin security group.
 
-These are Terraform configuration changes only; they do not alter an existing
-AWS deployment until reviewed and applied. Do not send session cookies,
-authorization headers, or other credentials to the legacy HTTP ALB endpoint.
+The AP-14.1 configuration is deployed in production. Further Terraform changes
+still require review and an apply. Do not send session cookies, authorization
+headers, or other credentials to the legacy HTTP ALB endpoint.
 
-Before enabling the API, provision these inputs:
+For a new API deployment, provision these inputs:
 
 1. `auth_secret_arn` and `api_proxy_secret_arn` (see the secret sections below).
 1. Set `api_allowed_origins` to the exact production Vercel origin; the Terraform
@@ -43,37 +43,38 @@ data-transfer charges can apply outside any eligible Free Tier quotas, and the
 ALB remains a separately billed resource.
 ## API deployment status
 
-The API remains disabled. The last verified deployment used an internet-facing
-HTTP ALB before AP-14; the current Terraform changes add a CloudFront VPC-origin
-path to an internal ALB but have not been applied. The ingest scheduler, database, and snapshot
-pipeline remain active.
+AP-14.1 is deployed and active. The enabled CloudFront distribution
+`d3cp6i4ssmrz6o.cloudfront.net` forwards HTTPS requests through its VPC origin
+to the internal ALB. The `comunio-prod-api` ECS service runs one task
+(task-definition revision 5), and the RDS instance is available. The daily
+snapshot schedule (`cron(0 6 * * ? *)`) is enabled. On 2026-10-12, database
+migrations and a manual snapshot both completed successfully, and
+`https://d3cp6i4ssmrz6o.cloudfront.net/health/ready` and the deployed Vercel
+proxy at `/api/proxy/health/ready` both returned HTTP 200.
 
-Re-enable the API only when the frontend integration starts:
-
-```hcl
-api_enabled = true
-```
+Use the CloudFront hostname as the API base URL in the Vercel server-side proxy.
+Do not use the legacy ALB hostname for API requests or credentials.
 
 The API requires both the AP-13.a proxy bearer token and the AP-14 login session.
 Configure the proxy token as
 `API_PROXY_SECRET` in Vercel and as the AWS Secrets Manager secret referenced by
 `api_proxy_secret_arn`.
 
-The legacy HTTP API endpoint from the earlier deployment is:
+The legacy HTTP API endpoint from the earlier deployment is not the production
+API endpoint and must not be used:
 
 ```text
 http://comunio-prod-api-1413412868.eu-central-1.elb.amazonaws.com
 ```
 
-Previously verified endpoints (before AP-14; not a live status check):
+Historical endpoint checks from before AP-14 (not a current status check):
 
 - `/health/live` -> HTTP 200
 - `/health/ready` -> HTTP 200 with database connectivity
 - `/api/v1/players?limit=1` -> HTTP 200
 
-The endpoint above is not an HTTPS endpoint and must not be used for
-authentication credentials. The AP-14.1 CloudFront deployment must be completed before
-re-enabling the API for auth.
+The endpoint above is not HTTPS and must not be used for authentication
+credentials. The current API endpoint is the HTTPS CloudFront hostname above.
 
 The earlier MVP used `assign_public_ip=true`, an HTTP listener, Vercel CORS for
 `https://comunio-data-website.vercel.app`, a mandatory proxy bearer token, and a
@@ -122,11 +123,16 @@ before ending the operator session. Do not print, copy into Terraform variables,
 or commit the secret JSON or generated values. The task role is granted
 `secretsmanager:GetSecretValue` only for the configured auth-secret ARN.
 
-### Emergency private switch
+### Emergency API pause
 
-The API remains disabled as the immediate no-frontend measure. Re-enabling it
-creates the CloudFront path to an internal ALB (private subnets, reachable only
-through the CloudFront VPC origin).
+Scale the API service to zero tasks to stop API processing:
+
+```powershell
+aws ecs update-service --cluster comunio-prod-cluster --service comunio-prod-api --desired-count 0
+```
+
+The CloudFront distribution remains enabled, but requests will not reach a
+running API task. Resume using the sequence in “Pause and resume (cost saving)”.
 
 ## API database access
 
@@ -307,7 +313,7 @@ aws ecs wait services-stable --cluster comunio-prod-cluster --services comunio-p
 aws events enable-rule --name comunio-prod-snapshot-schedule
 ```
 
-Verify with `https://<cloudfront-domain>/health/ready` (HTTP 200).
+Verify with `https://d3cp6i4ssmrz6o.cloudfront.net/health/ready` (HTTP 200).
 
 Notes:
 
