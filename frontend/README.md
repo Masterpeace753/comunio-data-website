@@ -12,7 +12,7 @@ npm run dev
 
 Set `NEXT_PUBLIC_API_BASE_URL` to the FastAPI base URL. The browser only calls the Next.js `/api/proxy` route; `API_PROXY_SECRET` is server-side only and must be configured as a Vercel Environment Variable when the API requires proxy authentication.
 
-The current stack uses Next.js 16.3.5, React 18, Tailwind CSS, Recharts 3, Vitest 5 and ESLint 9. ESLint 9 is retained because `eslint-config-next@16.3.5` does not yet support ESLint 10; revisit this pin when the Next.js ESLint integration adds support. The API proxy runs as a Vercel Function. Vercel Hobby currently includes 1 million function invocations per month, 4 active CPU hours and 360 GB-hours of provisioned memory, but is intended for personal, non-commercial use. The API proxy applies an 8-second upstream timeout and forwards only `GET` requests. Before production, the FastAPI must enforce `API_PROXY_SECRET` as specified by AP-13.a; forwarding a secret alone is not an access-control boundary.
+The current stack uses Next.js 16.4.5, React 18, Tailwind CSS, Recharts 3, Vitest 5 and ESLint 9. ESLint 9 is retained for compatibility with the Next.js ESLint integration. The API proxy runs as a Vercel Function. Vercel Hobby currently includes 1 million function invocations per month, 4 active CPU hours and 360 GB-hours of provisioned memory, but is intended for personal, non-commercial use. The API proxy applies an 8-second upstream timeout and forwards only `GET` requests. Before production, the FastAPI must enforce `API_PROXY_SECRET` as specified by AP-13.a; forwarding a secret alone is not an access-control boundary.
 
 ## Checks
 

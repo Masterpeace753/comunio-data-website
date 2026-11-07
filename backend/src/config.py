@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.secret_sources import resolve_environment_secret
+
 
 def _parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
@@ -18,6 +20,7 @@ class Settings:
     require_secret_mode: bool
     aws_region: str | None
     comunio_secret_name: str | None
+    comunio_secret_file: str | None
     comunio_email: str | None
     comunio_password: str | None
     comunio_snapshot_file: str | None
@@ -41,6 +44,15 @@ def load_settings() -> Settings:
 
     if app_env.strip().lower() in {"prod", "production"} and not require_secret_mode:
         raise ValueError("Production requires COMUNIO_REQUIRE_SECRET_MODE=true")
+
+    comunio_secret_name = os.getenv("COMUNIO_SECRET_NAME")
+    comunio_secret_file = os.getenv("COMUNIO_SECRET_FILE")
+    if comunio_secret_name and comunio_secret_file:
+        raise ValueError("Configure only one of COMUNIO_SECRET_NAME and COMUNIO_SECRET_FILE")
+    if comunio_secret_file and (os.getenv("COMUNIO_EMAIL") or os.getenv("COMUNIO_PASSWORD")):
+        raise ValueError(
+            "COMUNIO_SECRET_FILE cannot be combined with COMUNIO_EMAIL or COMUNIO_PASSWORD"
+        )
 
     snapshot_base_dir = os.getenv(
         "COMUNIO_SNAPSHOT_BASE_DIR",
@@ -72,11 +84,12 @@ def load_settings() -> Settings:
         raise ValueError("COMUNIO_LOGIN_RETRY_WAIT_SECONDS must be >= 0")
 
     return Settings(
-        database_url=os.getenv("DATABASE_URL", ""),
+        database_url=resolve_environment_secret("DATABASE_URL", "DATABASE_URL_FILE") or "",
         app_env=app_env,
         require_secret_mode=require_secret_mode,
         aws_region=os.getenv("AWS_REGION"),
-        comunio_secret_name=os.getenv("COMUNIO_SECRET_NAME"),
+        comunio_secret_name=comunio_secret_name,
+        comunio_secret_file=comunio_secret_file,
         comunio_email=os.getenv("COMUNIO_EMAIL"),
         comunio_password=os.getenv("COMUNIO_PASSWORD"),
         comunio_snapshot_file=os.getenv("COMUNIO_SNAPSHOT_FILE"),

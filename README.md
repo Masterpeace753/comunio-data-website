@@ -122,7 +122,7 @@ Abgeschlossene Basis-Gates:
 
 Die AWS-Production-API ist als kostenguenstiges MVP mit einem API-Task und nativen ALB-Metriken vorbereitet. Vor dem Frontend-Livegang muessen AP-13.a, ein fuer Vercel erreichbarer HTTPS-API-Endpunkt sowie die produktive API-Aktivierung abgeschlossen werden. WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben dokumentierte spaetere Haertungen; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
 
-Das Frontend nutzt Next.js 16.3.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`; die CI reproduziert diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans.
+Das Frontend nutzt Next.js 16.4.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`; die CI reproduziert diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans.
 
 ## Requirements-Status
 

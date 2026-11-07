@@ -26,14 +26,33 @@ from .schemas import (
     TransferMarketItem,
     TransferMarketResponse,
 )
+from src.secret_sources import resolve_environment_secret
 
 app_env = os.getenv("APP_ENV", "dev").strip().lower()
 is_production = app_env in {"prod", "production"}
-api_proxy_secret = os.getenv("API_PROXY_SECRET", "")
-if is_production and not api_proxy_secret:
-    raise RuntimeError("Production requires API_PROXY_SECRET")
-if is_production and not os.getenv("AUTH_SECRET_ARN"):
-    raise RuntimeError("Production requires AUTH_SECRET_ARN")
+
+
+def _load_api_proxy_secret(environment: str) -> str:
+    proxy_secret = resolve_environment_secret("API_PROXY_SECRET", "API_PROXY_SECRET_FILE") or ""
+    auth_arn = os.getenv("AUTH_SECRET_ARN")
+    auth_file = os.getenv("AUTH_SECRET_FILE")
+    if auth_arn and auth_file:
+        raise RuntimeError("Configure only one of AUTH_SECRET_ARN and AUTH_SECRET_FILE")
+    if environment in {"prod", "production"}:
+        if not proxy_secret:
+            raise RuntimeError("Production requires API_PROXY_SECRET or API_PROXY_SECRET_FILE")
+        if not (auth_arn or auth_file):
+            raise RuntimeError("Production requires AUTH_SECRET_ARN or AUTH_SECRET_FILE")
+        if auth_file:
+            try:
+                # Validate file-backed auth at startup. The AWS ARN provider remains lazy.
+                auth.get_auth_config()
+            except ValueError:
+                raise RuntimeError("Production AUTH_SECRET_FILE is invalid or unavailable") from None
+    return proxy_secret
+
+
+api_proxy_secret = _load_api_proxy_secret(app_env)
 
 app = FastAPI(
     title="Comunio Data API",

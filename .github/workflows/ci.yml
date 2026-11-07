@@ -75,6 +75,38 @@ jobs:
       - name: Build API image
         run: docker build --file Dockerfile.api --tag comunio-backend-api:ci .
 
+      - name: Build ingest image
+        run: docker build --file Dockerfile --tag comunio-backend-ingest:ci .
+
+  vps-configuration:
+    name: VPS deployment configuration
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check Compose profiles and security boundaries
+        run: python3 infra/vps/tests/test_compose.py
+
+      - name: Check systemd scheduler contract
+        run: python3 infra/vps/tests/test_systemd.py
+
+      - name: Verify systemd units and UTC schedule
+        run: |
+          systemd-analyze verify infra/vps/systemd/comunio-ingest@.service infra/vps/systemd/comunio-ingest.timer
+          calendar="$(sed -n 's/^OnCalendar=//p' infra/vps/systemd/comunio-ingest.timer)"
+          systemd-analyze calendar "$calendar"
+
+      - name: Check lock contention
+        run: |
+          lock="$(mktemp)"
+          trap 'rm -f "$lock"' EXIT
+          exec 9>"$lock"
+          flock -n 9
+          status=0
+          flock -n -E 75 "$lock" true || status=$?
+          test "$status" -eq 75
+
   frontend-tests:
     name: Frontend tests and build
     runs-on: ubuntu-24.04
