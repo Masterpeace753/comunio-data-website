@@ -30,6 +30,16 @@ LOGIN_WINDOW_SECONDS = 5 * 60
 MAX_TRACKED_LOGIN_IPS = 10_000
 
 
+def _load_login_rate_limit_scope() -> str:
+    scope = os.getenv("LOGIN_RATE_LIMIT_SCOPE", "client").strip().lower()
+    if scope not in {"client", "global"}:
+        raise RuntimeError("LOGIN_RATE_LIMIT_SCOPE must be client or global")
+    return scope
+
+
+LOGIN_RATE_LIMIT_SCOPE = _load_login_rate_limit_scope()
+
+
 @dataclass(frozen=True)
 class AuthConfig:
     username: str
@@ -123,6 +133,12 @@ def _login_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _login_rate_limit_key(request: Request) -> str:
+    if LOGIN_RATE_LIMIT_SCOPE == "global":
+        return "global"
+    return _login_client_ip(request)
+
+
 def create_access_token(username: str, jwt_secret: str, now: datetime | None = None) -> str:
     issued_at = now or datetime.now(timezone.utc)
     return jwt.encode(
@@ -172,7 +188,7 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 @router.post("/login")
 def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, str]:
-    if not _consume_login_attempt(_login_client_ip(request)):
+    if not _consume_login_attempt(_login_rate_limit_key(request)):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many login attempts.",
