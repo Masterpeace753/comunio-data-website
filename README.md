@@ -21,6 +21,17 @@ Das Projekt liefert:
 
 ## Aktueller Stand
 
+**Stand 07.11.2026:** Das Vercel-Frontend nutzt die VPS-API. Der finale
+AWS-Dump wurde geprüft und auf dem VPS wiederhergestellt, ein manueller
+VPS-Ingest war erfolgreich und der VPS-Timer ist aktiviert. Der AWS-Ingest
+ist deaktiviert; AWS bleibt für den kontrollierten Rückfall vorerst bestehen.
+Monitoring, regelmäßige Backups und VPS-Speicherverschlüsselung sind bewusst
+nachgelagerte TODOs. Der erste reguläre VPS-Timerlauf und die Stabilisierung
+stehen noch aus. Details: [Migrationsplan](docs/migration/00-gesamtplan.md)
+und [VPS-Validierungsbericht](infra/vps/validation-report-2026-11-07.md).
+
+### Historischer Projektstand
+
 Phase 1 ist umgesetzt (Analyse und Setup).
 
 Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
@@ -122,11 +133,37 @@ Abgeschlossene Basis-Gates:
 
 Die AWS-Production-API ist als kostenguenstiges MVP mit einem API-Task und nativen ALB-Metriken vorbereitet. Vor dem Frontend-Livegang muessen AP-13.a, ein fuer Vercel erreichbarer HTTPS-API-Endpunkt sowie die produktive API-Aktivierung abgeschlossen werden. WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben dokumentierte spaetere Haertungen; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
 
-Das Frontend nutzt Next.js 16.4.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`; die CI reproduziert diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans.
+Das Frontend nutzt Next.js 16.4.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`. Die CI führt diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans aus; der npm-Audit umfasst auch Entwicklungsabhängigkeiten.
+
+Die CI prüft zusätzlich veröffentlichte Support-Signale: npm-Deprecations
+aller gelockten Pakete, PyPI-Klassifizierung „Inactive“ und vollständig
+zurückgezogene Releases der installierten Backend-Pakete sowie die
+End-of-Life-Daten von Python, Node.js, PostgreSQL, Terraform, Next.js und
+React über [endoflife.date](https://endoflife.date/). Bei fehlenden Metadaten
+oder Netzwerkfehlern schlägt die Prüfung fehl. Hersteller melden nicht jedes
+Support-Ende maschinenlesbar; ein grüner Check garantiert daher keine
+vollständige Erkennung. Die einzige aktuell genehmigte, versionsgenaue
+Ausnahme ist ESLint 9.39.5 (siehe [Frontend-README](frontend/README.md)).
+Sie soll entfallen, sobald die Next.js-Lint-Plugins mit ESLint 10 kompatibel
+sind.
+
+Die CI auditiert die hashgesperrten Backend-Abhängigkeiten und prüft beide
+gebauten Images mit Trivy: Alle HIGH/CRITICAL-Befunde werden ausgegeben,
+solche mit verfügbarem Fix blockieren. Ohne verfügbaren Fix bleiben sie
+sichtbar, blockieren aber nicht. CodeQL analysiert Python und JavaScript/
+TypeScript und veröffentlicht die Ergebnisse in GitHub Code Scanning; ein
+erfolgreicher Analyse-Job allein bedeutet nicht, dass keine Alerts existieren.
+Die Repository-Maintainer prüfen offene Alerts und Scanner-Ausnahmen monatlich
+und nach relevanten Sicherheitsmeldungen. Actions sind auf Commit-SHAs
+festgelegt; Dependabot schlägt monatliche Updates vor.
 
 ## Requirements-Status
 
 Aktuelle Datei: [backend/requirements.txt](backend/requirements.txt)
+und das für Linux/Python 3.11 erzeugte
+[Lockfile](backend/requirements.lock). CI und Images installieren das Lockfile
+mit Hashprüfung; Aktualisierung und Plattformgrenzen stehen im
+[Backend-README](backend/README.md).
 
 Einschaetzung Stand heute:
 

@@ -16,9 +16,11 @@ recognize the Compose file in a local check; the explicit Compose assertions
 are therefore the VPS configuration gate. These checks do not start the VPS
 stack or prove TLS, volume persistence, scheduler execution, or restore.
 
-**Cutover is in progress; frontend detail-page deployment and acceptance are outstanding.**
+**The frontend cutover is live; stabilization and the AWS rollback period remain.**
 The AWS ingest rule is disabled. A final backup was restored and checked on
 the VPS, one manual VPS ingest succeeded, and the VPS timer was enabled.
+The frontend detail-page fix was deployed and the operator verified team and
+player details and player history; corresponding VPS API requests returned 200.
 See the [validation report](validation-report-2026-11-07.md) for the recorded
 state; do not start a second writer or retire AWS rollback resources.
 The operator reports that the AWS API is live; older repository documentation
@@ -207,7 +209,7 @@ deployment:
     `INGEST_RUN_TYPE` is set by the systemd template instance (`manual` or
     `scheduled`), not by this file.
 11. Protected preliminary and final migration backups have been restored and
-    checked; deployment and acceptance of the frontend detail-page fix remain outstanding.
+    checked; the frontend detail-page fix has been deployed and accepted.
     Automated monitoring and manual checks are both deferred by operator
     decision; this leaves failures and gaps potentially unnoticed.
 

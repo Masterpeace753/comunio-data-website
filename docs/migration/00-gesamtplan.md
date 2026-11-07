@@ -285,8 +285,9 @@ AWS-Ingest-Zeitplans wurde ein finaler verschlüsselter Dump erstellt, isoliert
 und auf dem VPS wiederhergestellt und anhand von Tabellenzeilenzahlen,
 Spalten, Constraints, Indizes und Sequenzständen geprüft. Ein kontrollierter
 VPS-Ingest war erfolgreich und der VPS-Timer ist aktiviert. Vercel ist auf
-den VPS umgestellt; Login und Listen funktionieren, aber die Korrektur für
-die Detailseiten muss noch deployed und interaktiv abgenommen werden.
+den VPS umgestellt; Login, Listen und die korrigierten Detailseiten samt
+Spielerhistorie wurden erfolgreich geprüft. Der erste reguläre Timerlauf,
+Neustartverhalten und die Stabilisierung stehen noch aus.
 Einzelheiten und Prüfsumme stehen
 im [Validierungsbericht](../../infra/vps/validation-report-2026-11-07.md).
 Das bestehende Exportskript, das Daten über Logs ausgibt, darf
@@ -352,19 +353,18 @@ voraus; DNS dieser Domain lässt sich nicht direkt auf den VPS umstellen. Für
 einen AWS-unabhängigen API-Endpunkt ist ein eigener Hostname mit gültigem
 TLS-Zertifikat vorgesehen. Der Betreiber hat `masterpeace-comunio-api.de`
 als API-Hostname gewählt; am 07.11.2026 zeigte dessen öffentlicher A-Eintrag
-auf die VPS-IPv4. DNS-Zugang, Erreichbarkeit und Zertifikatsausstellung sind
-vor Freigabe noch zu prüfen. Der Betreiber nennt
-`https://comunio-data-website.vercel.app` als Frontend-Origin; die
-Vercel-Konfiguration und End-to-End-Funktion sind noch zu verifizieren.
+auf die VPS-IPv4. Ein öffentlich gültiges Zertifikat wurde ausgestellt und
+HTTPS geprüft. Das Frontend `https://comunio-data-website.vercel.app` wurde
+auf den VPS umgestellt; Login und Datenansichten wurden erfolgreich geprüft.
 Alternativ sind
 [IP-Adresszertifikate von Let's Encrypt](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability/)
 möglich; ihre Laufzeit beträgt nur 160 Stunden und ihre automatische
 Erneuerung muss zuverlässig funktionieren. In jedem Fall sind ein
 abgesicherter, getesteter Zugang und eine angepasste Vercel-Konfiguration nötig.
-Die Umstellung und ihre Auswirkungen auf Proxy-Vertrauen, Rollback,
-AWS-Abhängigkeit und Kosten sind separat zu planen und freizugeben. CloudFront
-bleibt bis dahin bestehen und soll nach erfolgreichem Cutover und Ablauf der
-Rückfallfrist abgebaut werden.
+CloudFront bleibt für den Rückfall bestehen und soll nach erfolgreicher
+Stabilisierung und Ablauf der Rückfallfrist abgebaut werden. Ein Rückfall
+nach dem VPS-Schreibvorgang erfordert Datenabgleich oder eine ausdrückliche
+Entscheidung über Datenverlust.
 
 ## 8. Aufwandsrahmen und Einschränkungen
 

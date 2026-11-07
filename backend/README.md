@@ -11,6 +11,24 @@ This backend implements:
 
 ## Quick start
 
+CI and both Linux images install `requirements.lock` with hash verification.
+`requirements.txt` contains the direct dependency constraints. The lock is
+resolved on Linux with Python 3.11; other platforms or Python versions may
+need additional platform-specific dependencies. The final images remove
+`pip` after installation; rebuild the image instead of installing packages
+inside a running container.
+
+To update the lock, use Python 3.11 on Linux and `pip-tools` 7.6.2:
+
+```sh
+pip-compile --allow-unsafe --generate-hashes --strip-extras --output-file requirements.lock requirements.txt
+python -m pip install --require-hashes -r requirements.lock
+```
+
+Review the resulting dependency changes, run the tests and audit, and rebuild
+and scan both images. Base-image and OS package updates still depend on the
+upstream image and Debian repositories; the Python lock does not pin them.
+
 1. Copy `.env.example` to `.env` and fill values.
 1. Create database locally.
 1. Run migrations:
