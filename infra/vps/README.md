@@ -1,11 +1,11 @@
 # VPS deployment and cutover
 
-This directory contains a deployment definition for a single Ubuntu VPS:
-PostgreSQL, a one-shot Ingest container, and an optional API container with a
-systemd **user** timer. The API is in an opt-in Compose profile, has no
-published backend port. An additional, separately gated Compose overlay
-provides a proposed HTTPS reverse proxy; the base deployment does not expose
-it. AWS files and deployment definitions are not changed.
+This directory contains the deployment definition for the Ubuntu VPS:
+PostgreSQL, a one-shot Ingest container, a systemd **user** timer, and
+opt-in Compose profiles for the API and HTTPS proxy. As of 2026-11-08, the
+timer, API, and proxy are active on the VPS. The API has no published
+container port; external HTTPS traffic is served through Caddy. AWS files
+and deployment definitions are not changed.
 
 CI builds the Ingest and API images, checks the rendered Compose profiles and
 security boundaries with `python infra/vps/tests/test_compose.py`, checks the
@@ -13,28 +13,31 @@ scheduler contract with `python infra/vps/tests/test_systemd.py`, verifies the
 systemd unit syntax and UTC calendar, and tests `flock` contention. The
 repository security scan remains in place. Trivy's config scanner did not
 recognize the Compose file in a local check; the explicit Compose assertions
-are therefore the VPS configuration gate. These checks do not start the VPS
-stack or prove TLS, volume persistence, scheduler execution, or restore.
+are therefore the VPS configuration gate. These CI checks do not start the
+VPS stack or prove runtime behavior. Runtime TLS, restore, cutover, and
+scheduler results are recorded separately below and in the dated validation
+report.
 
-**The frontend cutover is live; stabilization and the AWS rollback period remain.**
-The AWS ingest rule is disabled. A final backup was restored and checked on
-the VPS, one manual VPS ingest succeeded, and the VPS timer was enabled.
+**Runtime state checked 2026-11-08:** The frontend cutover is live. The AWS
+ingest rule remains disabled, the final backup was restored and checked on
+the VPS, and the first scheduled VPS Ingest completed successfully at 06:00
+UTC (run 81; 600 records written). The timer is enabled and active, with the
+next activation scheduled for 2026-11-09 06:00 UTC. The API and Caddy proxy
+were running when checked. The updated Ingest unit now loads both Compose
+files and the `api`/`jobs` profiles; systemd and the combined Compose
+configuration validate successfully. This should prevent the earlier
+"orphan container" warning; the next scheduled run has not yet verified that.
+
 The frontend detail-page fix was deployed and the operator verified team and
-player details and player history; corresponding VPS API requests returned 200.
-See the [validation report](validation-report-2026-11-07.md) for the recorded
-state; do not start a second writer or retire AWS rollback resources.
-The operator reports that the AWS API is live; older repository documentation
-describes it as disabled, so verify the actual state before any plan or change.
-Do not disable the AWS API or its dependencies before a separately approved
-cutover. The source RDS reported PostgreSQL 16.14 in a read-only AWS check on
-2026-11-07; version and compatibility must be reconfirmed before migration.
-`serveradmin` is in the sudo group, but non-interactive sudo is unavailable.
-Lingering for that account was verified enabled on 2026-11-07. A preliminary
-backup and the final post-freeze backup were restored and checked. Automated
-monitoring and alerting are deliberately deferred until after migration and
-are not a cutover gate. The operator has also accepted having no manual
-checks initially; failures and gaps may therefore go unnoticed. One-time
-cutover and stabilization acceptance checks are still required.
+player details and player history; corresponding VPS API requests returned
+200. AWS rollback resources remain. The operator has reported that the AWS
+API is live, but its state was not independently checked on 2026-11-08; do
+not disable it or its dependencies without a separately approved and verified
+decision. Lingering for `serveradmin` was verified on 2026-11-07. Regular
+backups, monitoring/alerting, and VPS storage encryption remain outstanding;
+the accepted lack of routine manual checks means failures may go unnoticed.
+See the [validation report](validation-report-2026-11-07.md) for dated
+evidence and historical test details.
 
 ## What this deployment does and does not do
 
@@ -55,18 +58,19 @@ cutover and stabilization acceptance checks are still required.
 - `ingest` is a short-lived, non-root job. It is not started by `compose up`;
   the systemd user service runs it once and returns its exit status. Both the
   timer and supported manual starts use the same host lock.
-- `api` is behind the opt-in `api` Compose profile, uses separate API secrets,
-  a separate database URL and client certificate, and has no `ports:` entry.
-  It is not externally reachable in this design.
+- `api` uses the opt-in `api` Compose profile, separate API secrets, a
+  separate database URL and client certificate, and has no `ports:` entry.
+  It is currently reachable through the active Caddy HTTPS proxy, not through
+  a published API container port.
 - Secret file contents are never Compose environment values or command-line
   arguments. Only file paths are passed. The application reads
   `COMUNIO_SECRET_FILE` and `DATABASE_URL_FILE`.
 - `pg_hba.conf` permits local peer administration and TLS certificate
   authentication for the Ingest and gated API roles. It rejects non-TLS TCP
   connections.
-- `compose.https.yaml` adds an opt-in HTTPS proxy for the API, but the base
-  Compose file does not publish HTTP, HTTPS, or Uvicorn ports. Public API
-  activation requires the tests and separate approval described below.
+- `compose.https.yaml` adds an opt-in HTTPS proxy for the API. The base Compose
+  file does not publish HTTP, HTTPS, or Uvicorn ports; the active deployment
+  uses the overlay to publish HTTP/HTTPS on Caddy only.
 - The database image has no default major version. Select and pin the image
   only after checking the actual RDS engine version, extensions, collation,
   encoding, schema, and supported upgrade/dump-restore path. Never use `latest`.
@@ -308,6 +312,11 @@ The templated service uses `flock` on `%t/comunio-ingest.lock`. The timer
 starts `comunio-ingest@scheduled.service`; a supported manual run starts
 `comunio-ingest@manual.service`. Both instances pass through the same lock.
 A lock conflict exits nonzero and is visible in the user journal.
+The service loads both `compose.yaml` and `compose.https.yaml`, with the
+`api` and `jobs` profiles enabled, so Compose recognizes the separately
+started API and proxy containers as part of the project. The `run --rm ingest`
+command starts only the Ingest service and its dependencies; enabling the
+`api` profile here does not restart the API or proxy.
 
 `snapshot_job.py` uses `date.today()` for `market_values.snapshot_date`. The
 Ingest container explicitly sets `TZ=UTC`, and PostgreSQL session/log timezones
@@ -321,30 +330,37 @@ additional daily snapshot. Check `run_type`, UTC start time, and snapshot date
 after late/manual execution; do not rerun without considering this effect.
 
 `OnCalendar=*-*-* 06:00:00 UTC` is explicitly UTC. `Persistent=true` causes a
-missed calendar activation to run after the user manager becomes active; test
-this behavior and document the expected catch-up window before enabling the
-timer. It does not provide monitoring or prove a successful database write.
+missed calendar activation to run after the user manager becomes active; this
+catch-up behavior has not yet been verified on the production timer. Test it
+and document the expected catch-up window before enabling a timer on a new
+deployment. Persistence does not provide monitoring or prove a successful
+database write.
 Direct `docker` or `docker compose` starts bypass the shared lock and are
 unsupported and forbidden for operators. A direct invocation can overlap a
 timer or another manual job.
 
-The timer is not enabled by these files. Once every operational gate passes,
-an authorized administrator must enable user lingering for the deployment
-account (for example via `loginctl enable-linger <user>`); this requires host
-administrative authority. Verify `Linger=yes`. Without lingering, the user
-manager/timer will not reliably survive logout or run after boot.
-As of 2026-11-07, lingering is enabled for `serveradmin` and the Comunio
-timer is not installed. Verify lingering again for the actual deployment
-account; non-interactive sudo is unavailable, so further administrative
-steps require the administrator's participation.
+The timer unit does not enable itself; the installed production timer is
+explicitly enabled with systemd. Once every operational gate passes on a new
+host, an authorized administrator must enable user lingering for the
+deployment account (for example via `loginctl enable-linger <user>`); this
+requires host administrative authority. Verify `Linger=yes`. Without
+lingering, the user manager/timer will not reliably survive logout or run
+after boot.
+Lingering for `serveradmin` was verified on 2026-11-07. The Comunio user timer
+is now installed, enabled, and active (checked 2026-11-08). For a new host or
+deployment account, verify lingering and install/reload the units only after
+the prerequisites below pass. Non-interactive sudo is unavailable to
+`serveradmin`, so host-administration steps require an administrator.
 
-Install the user units under
-`~/.config/systemd/user/`, then reload the user manager. Keep the timer
+For a new deployment, install the user units under
+`~/.config/systemd/user/`, then reload the user manager. Keep a new timer
 disabled until backup/restore, TLS/secret checks, the remaining operational
-gates, and explicit production approval are complete. Manual tests should use
-`comunio-ingest@manual.service` so they use the same lock as the timer.
+gates, and explicit production approval are complete. Do not disable the
+currently active production timer as part of these setup instructions.
+Manual runs should use `comunio-ingest@manual.service` so they use the same
+lock as the timer.
 
-## Optional API profile — separate release only
+## API profile and credential separation
 
 The `api` service is defined but is not part of the default Compose profile.
 It has no host-published port; HTTPS is available only through the separate
@@ -358,10 +374,12 @@ Its required files are distinct from Ingest:
   `comunio_api_readonly`, `sslmode=verify-full`, the trusted CA, and the
   separate API client certificate/key.
 
-The profile is **not authorized for production activation**. The `pg_hba`
-entry alone does not grant data access; the role must have explicit `SELECT`
-grants only, and negative write tests must pass. API secret files are mounted
-only into the API container, not the Ingest service.
+The API profile is active in production as of 2026-11-08. Before activating
+it on another host or changing its database access, verify that the role has
+explicit `SELECT` grants only and that negative write tests pass; the `pg_hba`
+entry alone does not grant data access. API secret files are mounted only
+into the API container, not the Ingest service. The validation report records
+the production-role and API checks performed for this deployment.
 
 The VPS profile selects a global, in-memory login limit of five attempts per
 five minutes and explicitly starts one API worker. Forged viewer-address
@@ -379,15 +397,15 @@ above. Caddy obtains and renews public certificates and must retain its
 private, persistent data directory. Restrict its access; the operator has
 accepted unencrypted VPS storage temporarily, including certificate keys.
 
-Before use, pin `CADDY_IMAGE` to an approved immutable digest, set numeric
-non-root `CADDY_UID`/`CADDY_GID`, set `API_DOMAIN` to the approved hostname
+For a new deployment, pin `CADDY_IMAGE` to an approved immutable digest, set
+numeric non-root `CADDY_UID`/`CADDY_GID`, set `API_DOMAIN` to the approved hostname
 only (no scheme, port, path, or Caddy syntax), and set
 `VPS_CADDY_DATA_DIR` to an existing absolute path outside the repository.
 Create it with restrictive ownership and permissions, writable by that UID/GID,
 and verify container access without making it world-writable. Do not reuse
 the application or database secret directories.
 
-Render the overlay before any activation:
+Render the overlay before initial activation or a configuration change:
 
 ```sh
 docker compose --env-file "$HOME/.config/comunio-vps.env" \
@@ -397,20 +415,24 @@ docker compose --env-file "$HOME/.config/comunio-vps.env" \
   --profile api config
 ```
 
-Public DNS, IPv4/IPv6, certificate issuance and renewal, host and provider
-firewalls and Docker-published ports must be checked on the actual VPS.
-Only port 80/443 may reach the proxy; neither 5432 nor 8000 may be publicly
-reachable. Before any API activation, separately prove header handling,
-network isolation, HTTPS, and Vercel proxy/auth/CORS/session flows end to end.
-An isolated Caddy test using an internal test CA is not proof of public ACME
-issuance. Until these gates pass and activation is separately approved, do not
-start the `api` or proxy services or change the Vercel origin.
+For this production deployment, public HTTPS, the Vercel API flow, and
+external port reachability were checked during cutover (see the validation
+report). Recheck DNS, IPv4/IPv6, certificate renewal, firewalls, and published
+ports after network or deployment changes. Only port 80/443 may reach the
+proxy; neither 5432 nor 8000 may be publicly reachable. An isolated Caddy
+test using an internal test CA is not proof of public ACME issuance.
 
-The operator reports that the AWS API is live. Keep it and its database/API
-dependencies running until a separately approved, verified cutover. This
+The operator reports that the AWS API is live, but it was not independently
+verified on 2026-11-08. Keep it and its database/API dependencies running
+unless a separately approved, verified AWS shutdown is performed. This
 Compose definition does not authorize or perform AWS shutdown.
 
-## Required validation and go/no-go
+## Deployment validation checklist and remaining work
+
+The checklist below describes the initial deployment gates. Most cutover
+gates were completed and are recorded in the validation report; it is not a
+current production NO-GO declaration. Do not repeat production-impacting
+checks against live services without an explicit reason.
 
 Run all checks in an isolated environment with synthetic test credentials:
 
@@ -453,11 +475,11 @@ backup failures once regular backups exist. Test failure and missing-heartbeat
 alerts and delivery, and assign an owner and due date. Until then, failures
 or gaps can go unnoticed.
 
-**Production NO-GO:** no cutover, no live VPS writer, no timer enablement, and
-no AWS changes until the source RDS version and live AWS services (including
-the reported-live API) are verified, migration backup/restore is proven, all
-remaining required tests pass, lingering and required host access are verified,
-and the operator explicitly approves the cutover. API
-activation additionally requires separate TLS, trusted-proxy/header, auth,
-read-only-role, and Vercel end-to-end approval. Keep the AWS API active until
-that cutover is separately approved and verified.
+**Outstanding operational work (checked 2026-11-08):** monitoring and alert
+delivery, regular backup scheduling and restore monitoring, and VPS storage
+encryption still need an owner and follow-up. Missed-run recovery and lock
+contention have not been tested. The first scheduled run did succeed; the new
+combined-Compose unit has not yet been observed in a scheduled run without the
+orphan-container warning. Keep AWS rollback resources until the rollback
+period is explicitly accepted as complete. Do not change AWS services based
+only on this document; verify their live state and obtain separate approval.

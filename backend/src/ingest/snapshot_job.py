@@ -5,23 +5,49 @@ import datetime as dt
 from psycopg2.extensions import connection as PgConnection
 
 
-def _insert_ingest_run(conn: PgConnection, run_type: str) -> int:
+def start_ingest_run(conn: PgConnection, run_type: str, stage: str = "login") -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO ingest_runs(run_type, status, started_at)
-            VALUES (%s, 'started', %s)
+            INSERT INTO ingest_runs(run_type, status, started_at, stage)
+            VALUES (%s, 'started', %s, %s)
             RETURNING id
             """,
-            (run_type, dt.datetime.now(dt.UTC)),
+            (run_type, dt.datetime.now(dt.UTC), stage),
         )
         row = cur.fetchone()
         if row is None:
             raise RuntimeError("Could not create ingest_run")
-        return int(row[0])
+        run_id = int(row[0])
+    conn.commit()
+    return run_id
 
 
-def _mark_ingest_run(conn: PgConnection, run_id: int, status: str, records_written: int, error_message: str | None = None) -> None:
+def set_ingest_run_stage(conn: PgConnection, run_id: int, stage: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute("UPDATE ingest_runs SET stage = %s WHERE id = %s", (stage, run_id))
+    conn.commit()
+
+
+def mark_ingest_run_failed(conn: PgConnection, run_id: int, stage: str, error_code: str) -> None:
+    _mark_ingest_run(
+        conn,
+        run_id,
+        status="failed",
+        records_written=0,
+        stage=stage,
+        error_code=error_code,
+    )
+
+
+def _mark_ingest_run(
+    conn: PgConnection,
+    run_id: int,
+    status: str,
+    records_written: int,
+    stage: str,
+    error_code: str | None = None,
+) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -29,11 +55,13 @@ def _mark_ingest_run(conn: PgConnection, run_id: int, status: str, records_writt
             SET status = %s,
                 finished_at = %s,
                 records_written = %s,
-                error_message = %s
+                stage = %s,
+                error_code = %s
             WHERE id = %s
             """,
-            (status, dt.datetime.now(dt.UTC), records_written, error_message, run_id),
+            (status, dt.datetime.now(dt.UTC), records_written, stage, error_code, run_id),
         )
+    conn.commit()
 
 
 def _upsert_teams(conn: PgConnection, teams: list[dict]) -> dict[int, int]:
@@ -104,7 +132,7 @@ def _upsert_players(conn: PgConnection, players: list[dict], team_map: dict[int,
 
 def _upsert_market_values(conn: PgConnection, market_values: list[dict], player_map: dict[int, int], run_id: int) -> int:
     written = 0
-    snapshot_date = dt.date.today()
+    snapshot_date = dt.datetime.now(dt.UTC).date()
 
     with conn.cursor() as cur:
         for value in market_values:
@@ -139,6 +167,7 @@ def run_manual_snapshot(
     conn: PgConnection,
     normalized_snapshot: dict[str, list[dict]],
     run_type: str = "manual",
+    run_id: int | None = None,
 ) -> tuple[int, int]:
     """Execute the AP-7/AP-9 snapshot transaction flow.
 
@@ -148,18 +177,17 @@ def run_manual_snapshot(
     if run_type not in {"manual", "scheduled"}:
         raise ValueError(f"Unsupported ingest run type: {run_type}")
 
-    run_id = _insert_ingest_run(conn, run_type=run_type)
-    conn.commit()
+    if run_id is None:
+        run_id = start_ingest_run(conn, run_type=run_type, stage="persistence")
 
     try:
+        set_ingest_run_stage(conn, run_id, "persistence")
         team_map = _upsert_teams(conn, normalized_snapshot.get("teams", []))
         player_map = _upsert_players(conn, normalized_snapshot.get("players", []), team_map)
         written = _upsert_market_values(conn, normalized_snapshot.get("market_values", []), player_map, run_id)
-        _mark_ingest_run(conn, run_id, status="success", records_written=written)
-        conn.commit()
+        _mark_ingest_run(conn, run_id, status="success", records_written=written, stage="snapshot")
         return run_id, written
-    except Exception as exc:
+    except Exception:
         conn.rollback()
-        _mark_ingest_run(conn, run_id, status="failed", records_written=0, error_message=str(exc)[:1000])
-        conn.commit()
+        mark_ingest_run_failed(conn, run_id, stage="persistence", error_code="database_persistence_failed")
         raise

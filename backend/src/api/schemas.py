@@ -14,6 +14,32 @@ class Position(StrEnum):
     FORWARD = "ST"
 
 
+class IngestStage(StrEnum):
+    LOGIN = "login"
+    SNAPSHOT = "snapshot"
+    PERSISTENCE = "persistence"
+
+
+class IngestErrorCode(StrEnum):
+    AUTHENTICATION_FAILED = "authentication_failed"
+    SNAPSHOT_FETCH_FAILED = "snapshot_fetch_failed"
+    DATABASE_PERSISTENCE_FAILED = "database_persistence_failed"
+    UNEXPECTED_ERROR = "unexpected_error"
+
+
+class IngestRunType(StrEnum):
+    MANUAL = "manual"
+    SCHEDULED = "scheduled"
+    UNKNOWN = "unknown"
+
+
+class IngestRunStatus(StrEnum):
+    STARTED = "started"
+    SUCCESS = "success"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
 Item = TypeVar("Item")
 
 
@@ -94,6 +120,25 @@ class TransferMarketItem(BaseModel):
 class TransferMarketResponse(BaseModel):
     items: list[TransferMarketItem]
     snapshot_date: date | None
+    limit: int
+    offset: int
+    total: int
+
+
+class IngestRunItem(BaseModel):
+    id: int
+    run_type: IngestRunType
+    status: IngestRunStatus
+    started_at: datetime
+    finished_at: datetime | None
+    records_written: int
+    stage: IngestStage | None
+    error_code: IngestErrorCode | None
+
+
+class IngestRunsResponse(BaseModel):
+    current_data_date: date | None
+    items: list[IngestRunItem]
     limit: int
     offset: int
     total: int

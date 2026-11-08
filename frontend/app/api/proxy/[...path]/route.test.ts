@@ -30,4 +30,31 @@ describe("data API proxy", () => {
     expect(response.headers.get("cache-control")).toContain("private");
     expect(await response.text()).toBe('{"items":[]}');
   });
+
+  it("does not cache the local configuration error response", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    const request = new NextRequest("http://localhost/api/proxy/api/v1/players");
+
+    const response = await GET(request, {
+      params: Promise.resolve({ path: ["api", "v1", "players"] }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    expect(await response.json()).toMatchObject({ code: "api_not_configured" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not cache the local upstream error response", async () => {
+    fetchMock.mockRejectedValue(new Error("upstream unavailable"));
+    const request = new NextRequest("http://localhost/api/proxy/api/v1/players");
+
+    const response = await GET(request, {
+      params: Promise.resolve({ path: ["api", "v1", "players"] }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    expect(await response.json()).toMatchObject({ code: "api_timeout" });
+  });
 });

@@ -163,6 +163,25 @@ def test_missing_cookie_is_rejected(client: TestClient) -> None:
     assert client.get("/auth/me").status_code == 401
 
 
+def test_ingest_runs_requires_authenticated_session(client: TestClient) -> None:
+    response = client.get("/api/v1/ingest/runs")
+
+    assert response.status_code == 401
+    assert response.json() == {"code": "unauthorized", "message": "Authentication required."}
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_ingest_runs_proxy_token_does_not_replace_session_identity(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(api_app, "api_proxy_secret", "proxy-secret")
+    response = client.get(
+        "/api/v1/ingest/runs",
+        headers={"Authorization": "Bearer proxy-secret"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "unauthorized"
+
+
 def test_login_is_throttled_after_five_attempts(client: TestClient) -> None:
     for _ in range(auth.LOGIN_ATTEMPT_LIMIT):
         response = client.post(

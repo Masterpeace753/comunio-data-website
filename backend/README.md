@@ -72,6 +72,17 @@ populates `transfermarket_snapshots`. Set `API_ALLOWED_ORIGINS` to a comma-separ
 allowlist containing the Vercel production origin, for example
 `https://comunio-data.vercel.app`.
 
+`GET /api/v1/ingest/runs` returns a bounded, authenticated history of runs
+registered in `ingest_runs` and the latest available market-value
+`snapshot_date`. It never returns raw `error_message` values. It is not a
+complete invocation audit: failures before database registration (including
+database unavailability and scheduler lock conflicts) cannot appear there.
+The date describes the latest available market-value data, not the most recent
+attempt, and is reported in UTC. The endpoint requires migration
+`004_ingest_run_status_metadata.sql`; apply it with `python -m migrations.runner`
+before deploying the API code that serves this route. The feature migration
+and route have not yet been applied/deployed on the VPS.
+
 ## Notes
 
 - For deterministic local tests you can set `COMUNIO_SNAPSHOT_FILE` to a JSON file
@@ -105,8 +116,9 @@ allowlist containing the Vercel production origin, for example
     outside the repository and container image. Do not put secret contents in
     logs, command arguments, or deployment examples. AWS deployments should
     continue using their existing AWS settings without configuring `*_FILE`.
-- Scheduler/automation remains the separate AP-9 EventBridge task. The production API
-  deployment is a separate ECS service and the cost-optimized MVP uses a public HTTP ALB
-  with health checks. Private networking, HTTPS/ACM, WAF and a database reconnect proof
-  are later hardening steps. It must use a separate PostgreSQL read-only
-  user and a separate Secrets Manager secret from the ingest `DATABASE_URL`.
+- The AP-9 EventBridge task and ECS API service describe the former AWS
+  deployment. Current production runs on the VPS: a systemd user timer starts
+  the one-shot Ingest Compose job, and the API is served through the Caddy
+  HTTPS proxy. See the [VPS runbook](../infra/vps/README.md) for current
+  operating status and deployment instructions. Do not infer the live AWS
+  service state from these historical AP-9/AWS descriptions.

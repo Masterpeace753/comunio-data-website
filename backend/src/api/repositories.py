@@ -31,6 +31,22 @@ def _count(connection: PgConnection, query: str, parameters: tuple) -> int:
     return int(row[0]) if row else 0
 
 
+def list_ingest_runs(connection: PgConnection, limit: int, offset: int) -> tuple[list[tuple], int, date | None]:
+    rows = _execute(
+        connection,
+        """
+        SELECT id, run_type, status, started_at, finished_at, records_written, stage, error_code
+        FROM ingest_runs
+        ORDER BY started_at DESC, id DESC
+        LIMIT %s OFFSET %s
+        """,
+        (limit, offset),
+    )
+    total = _count(connection, "SELECT COUNT(*) FROM ingest_runs", ())
+    current_data_date = _execute_one(connection, "SELECT MAX(snapshot_date) FROM market_values", ())
+    return rows, total, current_data_date[0] if current_data_date else None
+
+
 def list_players(connection: PgConnection, limit: int, offset: int, team_id: int | None, position: str | None, search: str | None) -> tuple[list[tuple], int]:
     filters = "WHERE (%s IS NULL OR p.team_id = %s) AND (%s IS NULL OR p.position = %s) AND (%s IS NULL OR p.name ILIKE %s)"
     filter_parameters = (team_id, team_id, position, position, f"%{search}%" if search else None, f"%{search}%" if search else None)

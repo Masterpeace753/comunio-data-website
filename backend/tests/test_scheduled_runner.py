@@ -125,11 +125,118 @@ def test_run_failed_login_sanitizes_sensitive_exception_text(monkeypatch, capsys
     assert "detail=authentication_failed" in out
 
 
+class TrackingConnection:
+    def __init__(self) -> None:
+        self.started_rows: list[tuple] = []
+        self.failed_rows: list[tuple] = []
+        self.stages: list[tuple] = []
+        self.closed = False
+
+    def cursor(self):
+        return TrackingCursor(self)
+
+    def commit(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class TrackingCursor:
+    def __init__(self, connection: TrackingConnection) -> None:
+        self.connection = connection
+        self.result = None
+
+    def __enter__(self) -> "TrackingCursor":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+    def execute(self, query: str, parameters: tuple) -> None:
+        if "INSERT INTO ingest_runs" in query:
+            self.connection.started_rows.append(parameters)
+            self.result = (73,)
+        elif "UPDATE ingest_runs" in query:
+            if "error_code = %s" in query:
+                self.connection.failed_rows.append(parameters)
+            else:
+                self.connection.stages.append(parameters)
+
+    def fetchone(self):
+        return self.result
+
+
+def test_snapshot_attempt_is_persisted_when_login_fails(monkeypatch, capsys) -> None:
+    connection = TrackingConnection()
+    sensitive = "password=do-not-persist"
+
+    class FailedLoginClient:
+        def __init__(self, settings: object) -> None:
+            pass
+
+        def login(self) -> None:
+            raise ComunioLoginError(sensitive)
+
+    monkeypatch.setattr(
+        runner,
+        "load_settings",
+        lambda: FakeSettings(database_url="postgres://db", login_retry_attempts=1),
+    )
+    monkeypatch.setattr(runner, "connect", lambda _url: connection)
+    monkeypatch.setattr(runner, "ComunioPyClient", FailedLoginClient)
+
+    result = runner.main(["--run-type", "scheduled"])
+
+    assert result == 1
+    assert len(connection.started_rows) == 1
+    assert connection.started_rows[0][0] == "scheduled"
+    assert connection.started_rows[0][2] == "login"
+    assert (connection.failed_rows[0][0], connection.failed_rows[0][3]) == ("failed", "login")
+    assert connection.failed_rows[0][4] == "authentication_failed"
+    assert sensitive not in repr(connection.started_rows + connection.failed_rows)
+    assert connection.closed
+    assert "detail=authentication_failed" in capsys.readouterr().out
+
+
+def test_snapshot_attempt_is_persisted_when_fetch_fails(monkeypatch, capsys) -> None:
+    connection = TrackingConnection()
+
+    class FailedSnapshotClient:
+        def __init__(self, settings: object) -> None:
+            pass
+
+        def login(self) -> None:
+            return None
+
+        def fetch_snapshot(self) -> dict:
+            raise ComunioSnapshotError("sensitive upstream response")
+
+    monkeypatch.setattr(runner, "load_settings", lambda: FakeSettings(database_url="postgres://db"))
+    monkeypatch.setattr(runner, "connect", lambda _url: connection)
+    monkeypatch.setattr(runner, "ComunioPyClient", FailedSnapshotClient)
+    monkeypatch.setattr(runner.time, "sleep", lambda _seconds: None)
+
+    result = runner.main(["--run-type", "manual"])
+
+    assert result == 1
+    assert connection.started_rows[0][0] == "manual"
+    assert connection.stages == [("snapshot", 73)]
+    assert (connection.failed_rows[0][0], connection.failed_rows[0][3]) == ("failed", "snapshot")
+    assert connection.failed_rows[0][4] == "snapshot_fetch_failed"
+    assert "sensitive upstream response" not in repr(connection.failed_rows)
+    assert connection.closed
+    assert "detail=snapshot_fetch_failed" in capsys.readouterr().out
+
+
 def test_safe_detail_falls_back_for_unmapped_stage() -> None:
-    assert runner._safe_detail("config") == "unexpected_error"
-    assert runner._safe_detail("login") == "authentication_failed"
-    assert runner._safe_detail("snapshot") == "snapshot_fetch_failed"
-    assert runner._safe_detail("persistence") == "database_persistence_failed"
+    assert runner._safe_error_code("config") == "unexpected_error"
+    assert runner._safe_error_code("login") == "authentication_failed"
+    assert runner._safe_error_code("snapshot") == "snapshot_fetch_failed"
+    assert runner._safe_error_code("persistence") == "database_persistence_failed"
 
 
 def test_fetch_with_backoff_recovers_after_transient_snapshot_errors(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
@@ -169,4 +276,3 @@ def test_fetch_with_backoff_stops_after_max_attempts(monkeypatch, capsys) -> Non
 
     assert sleeps == [2, 4]
     assert capsys.readouterr().out.count("snapshot_retry") == 2
-

@@ -2,7 +2,15 @@
 
 **Stand:** 2026-11-07  
 **Umfang:** Sicherheitsplanung für die Migration dieses Repositories auf einen einzelnen Ubuntu-VPS. Keine SSH-Verbindung, keine produktiven Änderungen und keine Prüfung eines laufenden AWS- oder Contabo-Systems.  
-**Produktionsfreigabe:** **NO-GO**, bis alle unten als Pflicht-Gates markierten Punkte umgesetzt und nachgewiesen sind.
+**Vorab-Freigabe (Stand 2026-11-07):** **NO-GO**, bis alle unten als Pflicht-Gates markierten Punkte umgesetzt und nachgewiesen sind.
+
+> **Aktualisierung 2026-11-08:** Dieser Sicherheitsplan dokumentiert die
+> Freigabegrenzen vor dem Cutover, nicht den aktuellen Produktionsstatus.
+> Die VPS-Migration, API-Aktivierung und der Frontend-Cutover wurden
+> anschließend umgesetzt. Aktueller Laufzeitstand und offene
+> Betriebsaufgaben stehen in der [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Das historische NO-GO ist keine
+> aktuelle Freigabeentscheidung.
 
 ## 1. Ausgangslage und Beleggrenzen
 

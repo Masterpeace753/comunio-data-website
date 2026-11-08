@@ -1,5 +1,22 @@
 # VPS Compose validation report — 2026-11-07
 
+## Betriebs-Update — 2026-11-08
+
+Dieser Bericht enthält darunter die Prüfungen und den damaligen Cutover-Stand
+vom 07.11.2026. Aktueller Laufzeitstand: Der VPS-Timer ist enabled und active.
+Der erste reguläre Lauf am 08.11. um 06:00 UTC endete um 06:00:26 UTC mit
+Exit-Code 0; die Datenbankprüfung meldete Lauf-ID 81 und 600 geschriebene
+Datensätze. API und Caddy-Proxy liefen bei der anschließenden Prüfung.
+
+Der Lauf zeigte eine Docker-Warnung zu `comunio-vps-proxy-1`, weil die
+systemd-Unit nur `compose.yaml`, nicht aber `compose.https.yaml` geladen hatte.
+Die Unit wurde daraufhin angepasst, beide Compose-Dateien und die Profile
+`api`/`jobs` zu verwenden. Die aktualisierte Unit ist auf dem VPS installiert;
+systemd und die kombinierte Compose-Konfiguration wurden dort erfolgreich
+validiert. Ein weiterer Lauf mit dieser Änderung steht noch aus, daher ist
+noch nicht bestätigt, dass die Warnung entfällt. AWS-Ingest bleibt deaktiviert;
+der AWS-API-Status wurde am 08.11. nicht live geprüft.
+
 ## Result
 
 **Frontend cutover live; stabilization and rollback period remain.** A separate, isolated test was performed over SSH
@@ -138,7 +155,7 @@ recorded separately below.
   `NUL.part` containing a decrypted preliminary dump. The file was removed;
   physical erasure from the underlying storage cannot be guaranteed.
 
-## Runtime checks still required on an authorized isolated VPS
+## Historical runtime checks and remaining validation
 
 Use a unique Compose project name (`-p`), a newly created temporary test
 directory, synthetic test-only TLS CA/server/client certificates and
@@ -147,13 +164,13 @@ project's named volume is new and empty before invoking the bootstrap helper.
 Do not use the production Compose project name, production secret paths,
 production certificates, or production database volume.
 
-The following have **not** been run:
-
-- systemd lock contention or missed-run behavior.
-
-The first scheduled VPS run, missed-run behavior and restart recovery have
-not yet been verified. Keep AWS rollback resources until stabilization and
-the agreed rollback period are complete. Automated
-monitoring and alerting are deliberately deferred until after migration; manual
-checks are also initially omitted at the operator's accepted risk. See the
-[VPS runbook](README.md) for the outstanding monitoring TODO and current gates.
+At the time this report was prepared, the first scheduled run had not yet
+occurred. It subsequently succeeded on 2026-11-08 as recorded above.
+systemd lock contention, missed-run behavior, and restart recovery have not
+been verified. The revised combined-Compose service has been installed and
+configuration-validated but has not yet been observed in a scheduled run.
+Keep AWS rollback resources until stabilization and the agreed rollback
+period are complete. Automated monitoring/alerting, regular backups, and
+storage encryption remain outstanding; routine manual checks are also
+omitted at the operator's accepted risk. See the [VPS runbook](README.md)
+for current state and remaining work.

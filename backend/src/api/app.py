@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
+from enum import StrEnum
 import hmac
 import os
-from typing import Annotated
+from typing import Annotated, TypeVar
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg2.extensions import connection as PgConnection
 
 from . import repositories
@@ -21,6 +22,12 @@ from .schemas import (
     PlayerHistoryResponse,
     PlayerSummary,
     Position,
+    IngestRunItem,
+    IngestRunsResponse,
+    IngestErrorCode,
+    IngestRunStatus,
+    IngestRunType,
+    IngestStage,
     TeamDetail,
     TeamSummary,
     TransferMarketItem,
@@ -30,6 +37,7 @@ from src.secret_sources import resolve_environment_secret
 
 app_env = os.getenv("APP_ENV", "dev").strip().lower()
 is_production = app_env in {"prod", "production"}
+IngestEnum = TypeVar("IngestEnum", bound=StrEnum)
 
 
 def _load_api_proxy_secret(environment: str) -> str:
@@ -78,39 +86,55 @@ app.add_middleware(
 )
 
 
+def _private_cache_headers(request: Request, response: Response) -> Response:
+    if request.url.path == "/api/v1/ingest/runs":
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+def _safe_ingest_enum(enum_type: type[IngestEnum], value: object, unknown: IngestEnum) -> IngestEnum:
+    try:
+        return enum_type(value)
+    except (TypeError, ValueError):
+        return unknown
+
+
 @app.middleware("http")
 async def require_api_proxy_authentication(request: Request, call_next):
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         origin = request.headers.get("Origin")
         if not origin or origin not in allowed_origins:
-            return JSONResponse(
+            return _private_cache_headers(request, JSONResponse(
                 status_code=403,
                 content={"code": "invalid_origin", "message": "Request origin is not allowed."},
-            )
+            ))
 
     public_path = request.url.path == "/auth/login" or request.url.path.startswith("/health/")
     if not public_path:
         try:
             auth_config = auth.get_auth_config()
         except Exception:
-            return JSONResponse(
+            return _private_cache_headers(request, JSONResponse(
                 status_code=503,
                 content={"code": "authentication_unavailable", "message": "Authentication is unavailable."},
-            )
+            ))
         session_token = request.cookies.get(auth.TOKEN_COOKIE_NAME)
         if not session_token or not auth.validate_access_token(session_token, auth_config.jwt_secret):
-            return JSONResponse(
+            return _private_cache_headers(request, JSONResponse(
                 status_code=401,
                 content={"code": "unauthorized", "message": "Authentication required."},
                 headers={"WWW-Authenticate": "Bearer"},
-            )
+            ))
 
     if request.url.path.startswith(("/api/v1/", "/auth/")):
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if api_proxy_secret and (scheme.lower() != "bearer" or not hmac.compare_digest(token, api_proxy_secret)):
-            return JSONResponse(status_code=401, content={"code": "api_unauthorized", "message": "Authentication required."})
-    return await call_next(request)
+            return _private_cache_headers(
+                request,
+                JSONResponse(status_code=401, content={"code": "api_unauthorized", "message": "Authentication required."}),
+            )
+    return _private_cache_headers(request, await call_next(request))
 
 
 @app.exception_handler(RepositoryUnavailableError)
@@ -137,6 +161,44 @@ def ready(connection: Db) -> dict[str, str]:
     except Exception as exc:
         raise RepositoryUnavailableError("database_not_ready") from exc
     return {"status": "ready"}
+
+
+@app.get(
+    "/api/v1/ingest/runs",
+    response_model=IngestRunsResponse,
+    responses={503: {"description": "Database unavailable"}},
+)
+def ingest_runs(
+    connection: Db,
+    _username: Annotated[str, Depends(auth.require_authenticated_user)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> IngestRunsResponse:
+    """List database-registered ingest runs; this is not an invocation audit log."""
+    rows, total, current_data_date = repositories.list_ingest_runs(connection, limit, offset)
+    return IngestRunsResponse(
+        current_data_date=current_data_date,
+        items=[
+            IngestRunItem(
+                id=row[0],
+                run_type=_safe_ingest_enum(IngestRunType, row[1], IngestRunType.UNKNOWN),
+                status=_safe_ingest_enum(IngestRunStatus, row[2], IngestRunStatus.UNKNOWN),
+                started_at=row[3],
+                finished_at=row[4],
+                records_written=row[5],
+                stage=IngestStage(row[6]) if row[6] in {item.value for item in IngestStage} else None,
+                error_code=(
+                    IngestErrorCode(row[7])
+                    if row[7] in {item.value for item in IngestErrorCode}
+                    else IngestErrorCode.UNEXPECTED_ERROR if row[7] is not None else None
+                ),
+            )
+            for row in rows
+        ],
+        limit=limit,
+        offset=offset,
+        total=total,
+    )
 
 
 @app.get("/api/v1/players", response_model=Page[PlayerSummary])

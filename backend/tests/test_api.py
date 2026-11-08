@@ -277,3 +277,130 @@ def test_transfermarket_returns_valid_empty_page_when_not_ingested(monkeypatch) 
 
     assert response.status_code == 200
     assert response.json() == {"items": [], "snapshot_date": None, "limit": 25, "offset": 0, "total": 0}
+
+
+def test_ingest_runs_returns_safe_page_and_current_snapshot_date(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    started_at = datetime(2026, 11, 8, 15, 0, tzinfo=timezone.utc)
+    finished_at = datetime(2026, 11, 8, 15, 1, tzinfo=timezone.utc)
+    captured: list[tuple[int, int]] = []
+
+    def list_runs(connection, limit, offset):
+        captured.append((limit, offset))
+        return (
+            [(42, "scheduled", "failed", started_at, finished_at, 0, "snapshot", "snapshot_fetch_failed")],
+            3,
+            date(2026, 11, 7),
+        )
+
+    monkeypatch.setattr(api_app.repositories, "list_ingest_runs", list_runs)
+    try:
+        response = test_client.get("/api/v1/ingest/runs?limit=1&offset=2")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert captured == [(1, 2)]
+    assert response.json() == {
+        "current_data_date": "2026-11-07",
+        "items": [
+            {
+                "id": 42,
+                "run_type": "scheduled",
+                "status": "failed",
+                "started_at": "2026-11-08T15:00:00Z",
+                "finished_at": "2026-11-08T15:01:00Z",
+                "records_written": 0,
+                "stage": "snapshot",
+                "error_code": "snapshot_fetch_failed",
+            }
+        ],
+        "limit": 1,
+        "offset": 2,
+        "total": 3,
+    }
+
+
+def test_ingest_runs_allows_empty_current_data_date_and_rejects_bad_pagination(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    monkeypatch.setattr(api_app.repositories, "list_ingest_runs", lambda *args: ([], 0, None))
+    try:
+        empty = test_client.get("/api/v1/ingest/runs")
+        invalid_limit_low = test_client.get("/api/v1/ingest/runs?limit=0")
+        invalid_limit_high = test_client.get("/api/v1/ingest/runs?limit=101")
+        invalid_offset = test_client.get("/api/v1/ingest/runs?offset=-1")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert empty.status_code == 200
+    assert empty.json() == {"current_data_date": None, "items": [], "limit": 25, "offset": 0, "total": 0}
+    assert [invalid_limit_low.status_code, invalid_limit_high.status_code, invalid_offset.status_code] == [422, 422, 422]
+
+
+def test_ingest_runs_requires_proxy_auth_when_configured(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    monkeypatch.setattr(api_app, "api_proxy_secret", "proxy-secret")
+    monkeypatch.setattr(api_app.repositories, "list_ingest_runs", lambda *args: ([], 0, None))
+    try:
+        rejected = test_client.get("/api/v1/ingest/runs")
+        accepted = test_client.get(
+            "/api/v1/ingest/runs",
+            headers={"Authorization": "Bearer proxy-secret"},
+        )
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert rejected.status_code == 401
+    assert rejected.json()["code"] == "api_unauthorized"
+    assert accepted.status_code == 200
+
+
+def test_ingest_runs_response_never_contains_raw_error_text(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    secret_text = "postgres://private-user:private-password@db.internal"
+    monkeypatch.setattr(
+        api_app.repositories,
+        "list_ingest_runs",
+        lambda *args: (
+            [(1, "manual", "failed", datetime(2026, 11, 8, tzinfo=timezone.utc), None, 0, "untrusted stage", secret_text)],
+            1,
+            None,
+        ),
+    )
+    try:
+        response = test_client.get("/api/v1/ingest/runs")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert secret_text not in response.text
+    assert "error_message" not in response.text
+    assert response.json()["items"][0]["stage"] is None
+    assert response.json()["items"][0]["error_code"] == "unexpected_error"
+
+
+def test_ingest_runs_maps_unknown_type_and_status_to_unknown(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    private_type = "internal-manual-override"
+    private_status = "failed: database password=secret"
+    monkeypatch.setattr(
+        api_app.repositories,
+        "list_ingest_runs",
+        lambda *args: (
+            [(2, private_type, private_status, datetime(2026, 11, 8, tzinfo=timezone.utc), None, 0, None, None)],
+            1,
+            None,
+        ),
+    )
+    try:
+        response = test_client.get("/api/v1/ingest/runs")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["run_type"] == "unknown"
+    assert item["status"] == "unknown"
+    assert private_type not in response.text
+    assert private_status not in response.text

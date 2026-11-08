@@ -4,6 +4,14 @@
 **Status:** Architektur- und Ablaufplan, keine Ausführung. Repository-Stand geprüft am 07.11.2026.
 **Sicherheitsgrenze:** Dieses Dokument enthält keine Zugangsdaten. Es wurden weder Deployments noch SSH-Verbindungen oder Änderungen an AWS vorgenommen.
 
+> **Aktualisierung 2026-11-08:** Dieser Fachplan dokumentiert die
+> Vorab-Analyse. Die VPS-Migration und der Frontend-Cutover wurden
+> anschließend umgesetzt; der aktuelle Betriebsstand steht in der
+> [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Aussagen dieses Plans über einen
+> ungeklärten AWS-/API-Status oder noch nicht ausgeführte Schritte sind
+> historische Befunde, keine aktuelle Betriebsanzeige.
+
 ## 1. Befundlage
 
 ### Ist-Zustand laut Repository

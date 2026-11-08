@@ -12,6 +12,7 @@ def test_openapi_exposes_read_routes_and_authentication_contract() -> None:
     expected_paths = {
         "/health/live",
         "/health/ready",
+        "/api/v1/ingest/runs",
         "/api/v1/players",
         "/api/v1/players/{player_id}",
         "/api/v1/players/{player_id}/history",
@@ -55,3 +56,22 @@ def test_openapi_contains_ap12_nullable_fields() -> None:
 def test_openapi_history_declares_validation_responses() -> None:
     history = api_app.app.openapi()["paths"]["/api/v1/players/{player_id}/history"]["get"]
     assert {"200", "400", "404", "422", "503"} <= set(history["responses"])
+
+
+def test_openapi_ingest_runs_contract() -> None:
+    openapi = api_app.app.openapi()
+    operation = openapi["paths"]["/api/v1/ingest/runs"]["get"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+
+    assert {"200", "422", "503"} <= set(operation["responses"])
+    assert response_schema["$ref"].endswith("/IngestRunsResponse")
+    schemas = _schema_definitions(openapi)
+    assert set(schemas["IngestRunsResponse"]["properties"]) == {
+        "current_data_date", "items", "limit", "offset", "total"
+    }
+    assert set(schemas["IngestRunItem"]["properties"]) == {
+        "id", "run_type", "status", "started_at", "finished_at",
+        "records_written", "stage", "error_code"
+    }
+    assert schemas["IngestRunType"]["enum"] == ["manual", "scheduled", "unknown"]
+    assert schemas["IngestRunStatus"]["enum"] == ["started", "success", "failed", "unknown"]

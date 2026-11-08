@@ -27,7 +27,8 @@ class SystemdConfigurationTests(unittest.TestCase):
         self.assertEqual(service["Type"], "oneshot")
         self.assertEqual(service["Environment"], "INGEST_RUN_TYPE=%i")
         self.assertIn("/usr/bin/flock -n -E 75 %t/comunio-ingest.lock ", service["ExecStart"])
-        self.assertIn("--profile jobs run --rm ingest", service["ExecStart"])
+        self.assertIn("-f %h/comunio/infra/vps/compose.https.yaml", service["ExecStart"])
+        self.assertIn("--profile api --profile jobs run --rm ingest", service["ExecStart"])
         self.assertEqual(service["TimeoutStartSec"], "30min")
 
 

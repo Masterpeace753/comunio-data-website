@@ -1,7 +1,7 @@
 # Comunio Data Website
 
 Release-Version: v0.6.1 (Authenticated API Go-live and Vercel Proxy Integration)
-Dokumentationsstand: 2026-09-20
+Dokumentationsstand: 2026-11-08
 
 ## Repository-Beschreibung
 
@@ -21,14 +21,27 @@ Das Projekt liefert:
 
 ## Aktueller Stand
 
-**Stand 07.11.2026:** Das Vercel-Frontend nutzt die VPS-API. Der finale
-AWS-Dump wurde geprüft und auf dem VPS wiederhergestellt, ein manueller
-VPS-Ingest war erfolgreich und der VPS-Timer ist aktiviert. Der AWS-Ingest
-ist deaktiviert; AWS bleibt für den kontrollierten Rückfall vorerst bestehen.
-Monitoring, regelmäßige Backups und VPS-Speicherverschlüsselung sind bewusst
-nachgelagerte TODOs. Der erste reguläre VPS-Timerlauf und die Stabilisierung
-stehen noch aus. Details: [Migrationsplan](docs/migration/00-gesamtplan.md)
-und [VPS-Validierungsbericht](infra/vps/validation-report-2026-11-07.md).
+**Betriebsstand 08.11.2026:** Das Vercel-Frontend nutzt die VPS-API. Der
+VPS-Timer ist aktiv; der erste reguläre Lauf heute um 06:00 UTC war
+erfolgreich (Lauf-ID 81, 600 Datensätze). Die API und der HTTPS-Proxy liefen
+bei der letzten VPS-Prüfung. Der Ingest-Service wurde am 08.11. so angepasst,
+dass er auch das HTTPS-Compose-Overlay lädt; die Änderung ist auf dem VPS
+installiert und validiert. Der nächste Lauf soll bestätigen, dass dadurch die
+Compose-Warnung zu einem vermeintlich verwaisten Proxy entfällt.
+
+Der AWS-Ingest bleibt deaktiviert; AWS-Ressourcen bleiben für den
+kontrollierten Rückfall vorerst erhalten. Der AWS-API-Status wurde bei der
+Prüfung am 08.11. nicht live verifiziert. Monitoring, regelmäßige Backups und
+VPS-Speicherverschlüsselung sind weiterhin offene Betriebsaufgaben. Details:
+[Migrationsplan](docs/migration/00-gesamtplan.md) und
+[VPS-Validierungsbericht](infra/vps/validation-report-2026-11-07.md).
+
+**Feature-Stand Datenladeverlauf:** Im aktuellen Arbeitsstand ist der
+anklickbare Datenmodus mit einer Übersicht registrierter Ingest-Läufe
+implementiert. Die Änderung ist noch nicht committed oder auf dem VPS
+ausgerollt; insbesondere muss dort Migration 004 angewendet werden, bevor die
+neue API-Route verfügbar ist. Der oben beschriebene VPS-Betriebsstand enthält
+diese Feature-Änderung daher noch nicht.
 
 ### Historischer Projektstand
 
@@ -41,13 +54,24 @@ Phase 2 ist auf Code- und Dokumentationsseite umgesetzt:
 - AP-7: Manueller Snapshot-Job (Teams, Spieler, Marktwerte)
 - AP-8: Basis-Fehlerbehandlung und Retry/Backoff
 
-Die AWS-Baseline ist deployed. Migrationen sowie ein produktiver Live-Snapshot mit Secrets Manager Credentials wurden End-to-End erfolgreich ausgefuehrt; der letzte Lauf schrieb 600 Datensaetze. Der AP-9-Scheduler laeuft taeglich um 06:00 UTC ueber EventBridge und ECS Fargate. AP-9.2 ergaenzt einen automatischen Login-Retry (3 Versuche im 5-Minuten-Abstand) mit CloudWatch-Alarm bei erschoepften Versuchen. Das Frontend-v1 ist unter `frontend/` als Next.js-App mit serverseitigem Vercel-Proxy, typisierter API-Schicht, Dashboard, Spieler-, Team- und Transfermarktseiten umgesetzt. Die FastAPI bleibt bis zur Umsetzung von AP-13.a und der produktiven API-Netzwerk-/HTTPS-Konfiguration deaktiviert; Ingest-Scheduler, Datenbank und Snapshot-Pipeline bleiben aktiv.
+Die folgenden Angaben beschreiben frühere Projekt- und AWS-Meilensteine, nicht
+den aktuellen Produktionsbetrieb: Die AWS-Baseline, Migrationen und
+Live-Snapshots wurden umgesetzt; AP-9 verwendete zuvor EventBridge und ECS
+Fargate. Der aktuelle tägliche Produktions-Ingest läuft auf dem VPS über
+systemd und Docker Compose (siehe oben und das VPS-Runbook). Das
+Frontend-v1 ist unter `frontend/` als Next.js-App mit serverseitigem
+Vercel-Proxy, typisierter API-Schicht, Dashboard, Spieler-, Team- und
+Transfermarktseiten umgesetzt. Ältere Aussagen weiter unten, die AWS-API sei
+abgeschaltet oder vor einer Reaktivierung stünden, beschreiben einen
+überholten Zustand.
 
 Der Drei-Lauf-Stabilitaetsnachweis fuer AP-9 ist erbracht (fuenf aufeinanderfolgende erfolgreiche Tagesfenster 2026-08-27 bis 2026-08-31, siehe `implementierungsplan.md` Abschnitt 19). AP-11 ist als kostenorientiertes HTTP-MVP verifiziert. AP-12 ist als read-only-Delta-Projektion umgesetzt. AP-13 ist mit PostgreSQL-16-Integrationstests, OpenAPI-Contract-Test, Fehlerpfadtests, Benchmark-Skript und nativen ALB-CloudWatch-Alarmen umgesetzt.
 
-Der vollstaendige Security-Review vom 2026-08-25 steht unter [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md). Die API ist aktuell abgeschaltet; vor der Reaktivierung mit dem Frontend muessen AP-13.a-Proxy-Authentifizierung, HTTPS/ACM und der interne ALB beruecksichtigt werden.
-
-Als Notfallmassnahme fuer die Zeit ohne Frontend wird die API mit `api_enabled = false` betrieben. Zur spaeteren Reaktivierung den Schalter setzen, Terraform anwenden und danach AP-13.a umsetzen.
+Der vollständige Security-Review vom 2026-08-25 steht unter
+[docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md).
+Die dortigen sowie die nachfolgenden historischen AWS-Notfallhinweise sind
+keine aktuelle Betriebsanweisung. Für den aktuellen VPS- und API-Status gilt
+ausschließlich das [VPS-Runbook](infra/vps/README.md).
 
 ## Architektur und Planung
 
@@ -131,7 +155,12 @@ Abgeschlossene Basis-Gates:
 - G2 Migrations-Idempotenz
 - G3 Schema-Integritaet
 
-Die AWS-Production-API ist als kostenguenstiges MVP mit einem API-Task und nativen ALB-Metriken vorbereitet. Vor dem Frontend-Livegang muessen AP-13.a, ein fuer Vercel erreichbarer HTTPS-API-Endpunkt sowie die produktive API-Aktivierung abgeschlossen werden. WAF, private API-Subnets, NAT/VPC-Endpoints und Multi-AZ bleiben dokumentierte spaetere Haertungen; SNS-E-Mail ist ueber `alert_sns_topic_arn` optional.
+Die folgenden API-Angaben beschreiben den früheren AWS-Entwurf, nicht den
+aktuellen Go-live: Die Vercel-Integration mit der VPS-API ist umgesetzt und
+der VPS-HTTPS-Endpunkt ist aktiv. WAF, private API-Subnets, NAT/VPC-Endpoints
+und Multi-AZ sind mögliche AWS-Härtungsmaßnahmen, falls AWS später wieder
+als Produktionsplattform genutzt wird; SNS-E-Mail ist über
+`alert_sns_topic_arn` optional.
 
 Das Frontend nutzt Next.js 16.4.5 auf Vercel. Die lokalen Frontend-Gates sind `npm ci`, `npm audit --audit-level=moderate`, `npm test`, `npm run lint` und `npm run build`. Die CI führt diese Checks gemeinsam mit Backend-, Terraform- und Security-Scans aus; der npm-Audit umfasst auch Entwicklungsabhängigkeiten.
 
@@ -178,11 +207,16 @@ Hinweis zum Comunio-Adapter:
 - `backend/src/ingest/comuniopy_client.py` enthaelt stattdessen den eigenen `ComunioPyClient` fuer Login, Snapshot-Abruf und Normalisierung.
 - Der produktive AWS-Live-Snapshot wurde mit diesem Adapter erfolgreich ausgefuehrt.
 
-## Naechste Schritte
+## Historisches AWS-Backlog
+
+Die folgenden Punkte betreffen den früheren AWS-Betrieb und sind nicht das
+aktuelle VPS-Rest-Backlog. Die offenen VPS-Betriebsaufgaben stehen im
+[VPS-Runbook](infra/vps/README.md).
 
 1. SNS-Subscription bestaetigen und `terraform apply` fuer das Alarmrouting ausfuehren, falls E-Mail-Benachrichtigungen gewuenscht sind.
 1. AP-13-AWS-Staging-Baseline nur vor groesseren Releases oder bei Skalierungsbedarf starten; sie ist kostenpflichtig und kein MVP-Blocker.
 1. Optionales AP-10a.5-Hardening planen: privater ECS-Egress, NAT/VPC-Endpoints, `assign_public_ip=false`, HTTPS/ACM und WAF.
 1. Vor Team-Onboarding den Remote-Terraform-State mit `terraform init -migrate-state` nach manueller Freigabe aktivieren.
 
-Die verbindliche Reihenfolge und das priorisierte Rest-Backlog stehen im [Implementierungsplan](implementierungsplan.md).
+Der [Implementierungsplan](implementierungsplan.md) dokumentiert die
+historische AWS-Roadmap.
