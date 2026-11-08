@@ -70,6 +70,7 @@ def test_ingest_runs_pagination_order_and_current_data_date(
     test_client = _client(postgres_connection, monkeypatch)
     try:
         response = test_client.get("/api/v1/ingest/runs?limit=2&offset=0")
+        stale = test_client.get("/api/v1/ingest/runs?limit=1&offset=2")
     finally:
         api_app.app.dependency_overrides.clear()
 
@@ -86,7 +87,6 @@ def test_ingest_runs_pagination_order_and_current_data_date(
     assert body["items"][0]["error_code"] == "snapshot_fetch_failed"
     assert "private upstream error" not in response.text
     assert "error_message" not in response.text
-    stale = test_client.get("/api/v1/ingest/runs?limit=1&offset=2")
     assert stale.status_code == 200
     assert stale.json()["items"][0]["status"] == "started"
 
