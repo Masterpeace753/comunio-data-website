@@ -80,8 +80,10 @@ database unavailability and scheduler lock conflicts) cannot appear there.
 The date describes the latest available market-value data, not the most recent
 attempt, and is reported in UTC. The endpoint requires migration
 `004_ingest_run_status_metadata.sql`; apply it with `python -m migrations.runner`
-before deploying the API code that serves this route. The feature migration
-and route have not yet been applied/deployed on the VPS.
+before deploying the API code that serves this route. On 2026-11-08, migration
+004 and the updated API and Ingest images were deployed to the VPS. The public
+health and readiness endpoints returned 200; an unauthenticated request to the
+history route was rejected as expected.
 
 ## Notes
 

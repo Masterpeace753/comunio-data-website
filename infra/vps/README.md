@@ -28,6 +28,13 @@ files and the `api`/`jobs` profiles; systemd and the combined Compose
 configuration validate successfully. This should prevent the earlier
 "orphan container" warning; the next scheduled run has not yet verified that.
 
+On 2026-11-08, commit `4c863bf` was deployed: migration
+`004_ingest_run_status_metadata.sql` is applied, the API image is running, and
+the Ingest image reference is updated for the next timer run. Public HTTPS
+checks returned 200 for liveness and readiness; an unauthenticated request to
+the Ingest history route returned 401. The updated Ingest has not yet
+completed a production run.
+
 The frontend detail-page fix was deployed and the operator verified team and
 player details and player history; corresponding VPS API requests returned
 200. AWS rollback resources remain. The operator has reported that the AWS
