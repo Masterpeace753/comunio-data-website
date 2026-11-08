@@ -36,12 +36,13 @@ VPS-Speicherverschlüsselung sind weiterhin offene Betriebsaufgaben. Details:
 [Migrationsplan](docs/migration/00-gesamtplan.md) und
 [VPS-Validierungsbericht](infra/vps/validation-report-2026-11-07.md).
 
-**Feature-Stand Datenladeverlauf:** Im aktuellen Arbeitsstand ist der
-anklickbare Datenmodus mit einer Übersicht registrierter Ingest-Läufe
-implementiert. Die Änderung ist noch nicht committed oder auf dem VPS
-ausgerollt; insbesondere muss dort Migration 004 angewendet werden, bevor die
-neue API-Route verfügbar ist. Der oben beschriebene VPS-Betriebsstand enthält
-diese Feature-Änderung daher noch nicht.
+**Datenladeverlauf (08.11.2026):** Commit `4c863bf` ist auf dem VPS
+ausgerollt; Migration 004 ist angewendet. Die neue API ist über HTTPS
+erreichbar und bereit für Datenbankzugriffe. Der Verlauf-Endpunkt weist
+unauthentifizierte Anfragen zurück. Das Frontend wurde laut Betreiber
+automatisch auf Vercel deployed. Der aktualisierte Ingest ist konfiguriert;
+ein neuer Produktionslauf wurde nicht manuell gestartet und steht beim
+nächsten Timer-Termin zur Laufzeitprüfung an.
 
 ### Historischer Projektstand
 
