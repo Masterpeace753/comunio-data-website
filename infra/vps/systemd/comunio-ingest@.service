@@ -7,7 +7,7 @@ Type=oneshot
 WorkingDirectory=%h/comunio/infra/vps
 EnvironmentFile=%h/.config/comunio-vps.env
 Environment=INGEST_RUN_TYPE=%i
-ExecStart=/usr/bin/flock -n -E 75 %t/comunio-ingest.lock /usr/bin/docker compose --env-file %h/.config/comunio-vps.env --project-directory %h/comunio/infra/vps -f %h/comunio/infra/vps/compose.yaml --profile jobs run --rm ingest
+ExecStart=/usr/bin/flock -n -E 75 %t/comunio-ingest.lock /usr/bin/docker compose --env-file %h/.config/comunio-vps.env --project-directory %h/comunio/infra/vps -f %h/comunio/infra/vps/compose.yaml -f %h/comunio/infra/vps/compose.https.yaml --profile api --profile jobs run --rm ingest
 TimeoutStartSec=30min
 TimeoutStopSec=30s
 KillMode=mixed

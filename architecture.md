@@ -1,13 +1,22 @@
 # Zielarchitektur fuer das Comunio-Projekt
 
+> **Betriebsstand 2026-11-08:** Dieses Dokument beschreibt die frühere
+> AWS-Ziel-/Referenzarchitektur und ist kein Laufzeitstatus. Der produktive
+> Ingest läuft inzwischen über einen systemd-User-Timer auf dem VPS; API und
+> HTTPS-Proxy sind dort ebenfalls aktiv. Für aktuelle Betriebsfakten und
+> offene Aufgaben gelten die [Projektübersicht](README.md) und das
+> [VPS-Runbook](infra/vps/README.md).
+
 ## 1. Kontext und Leitplanken
 
 Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit folgenden festen Vorgaben:
 
 - Datenquelle fuer Comunio-Daten: Comunio-REST-API, angesprochen ueber den eigenen `ComunioPyClient`-Adapter
 - Architektur: Microservices, REST-Schnittstellen
-- Plattform: AWS fuer Backend und Datenbank, Vercel fuer Frontend
-- Betrieb: containerisiert mit Docker und aktuell auf AWS ECS/Fargate betrieben; Kubernetes ist keine AP-11-Voraussetzung
+- Plattform der früheren Referenzarchitektur: AWS für Backend und
+  Datenbank, Vercel für das Frontend
+- Früherer Betrieb: containerisiert mit Docker auf AWS ECS/Fargate;
+  Kubernetes ist keine AP-11-Voraussetzung
 - Nicht-funktional: unter 2 Sekunden Ladezeit, 99.9 Prozent Verfuegbarkeit, OWASP Top 10 Schutz, Monitoring und Alerting
 
 ## 2. Architekturueberblick
@@ -44,7 +53,9 @@ flowchart LR
 - Trigger:
   - Stufe 1 manuell
   - ab Stufe 2 taeglich geplant (z. B. 06:00 UTC)
-- AP-9-Betrieb: EventBridge startet den ECS-Fargate-Task taeglich um 06:00 UTC mit `run_type=scheduled`.
+- Früherer AP-9-AWS-Betrieb: EventBridge startete den ECS-Fargate-Task
+  täglich um 06:00 UTC mit `run_type=scheduled`. Der aktuelle VPS-Scheduler
+  ist im [VPS-Runbook](infra/vps/README.md) dokumentiert.
 - AP-9-Resilienz: EventBridge verwendet zwei Retries innerhalb einer Stunde; danach wird das Ereignis in der verschluesselten SQS-DLQ abgelegt.
 - Fehlerbehandlung:
   - Retry mit Exponential Backoff
@@ -53,8 +64,8 @@ flowchart LR
 
 ### 3.1.1 AP-9 Scheduler-Betriebsvertrag
 
-- Die aktive Rule `comunio-prod-snapshot-schedule` verwendet die freigegebene Cron-Konfiguration und startet genau einen Fargate-Task pro Ausfuehrung.
-- Der Task nutzt eine gepinnte Fargate-Plattformversion und schreibt `run_started`, `db_verify` sowie `run_success` oder `run_failed` in CloudWatch.
+- Die frühere Rule `comunio-prod-snapshot-schedule` verwendete die freigegebene Cron-Konfiguration und startete genau einen Fargate-Task pro Ausführung.
+- Der frühere Task nutzte eine gepinnte Fargate-Plattformversion und schrieb `run_started`, `db_verify` sowie `run_success` oder `run_failed` in CloudWatch.
 - Fachliche Idempotenz bleibt ueber die bestehenden Snapshot-Constraints erhalten; ein erneuter Lauf darf keine doppelten Marktwertzeilen erzeugen.
 - Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis. Dieser Nachweis wurde am 2026-08-31 erbracht: fuenf aufeinanderfolgende Tagesfenster (2026-08-27 bis 2026-08-31) mit `run_type=scheduled`, `run_success` und ohne Duplikate in `market_values` (siehe `implementierungsplan.md`, Abschnitt 19).
 

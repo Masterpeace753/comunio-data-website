@@ -6,6 +6,13 @@
 
 **Geltungsbereich:** Anwendungscode, Container, Scheduler, Secrets, PostgreSQL, CI/CD und überprüfbare Tests. Keine tatsächliche Serververbindung, Bereitstellung oder Quellcode-/Konfigurationsänderung ist Bestandteil dieses Dokuments.
 
+> **Aktualisierung 2026-11-08:** Dieser Plan dokumentiert den
+> Vorab-Implementierungsstand. Die VPS-Migration und der Frontend-Cutover
+> wurden anschließend umgesetzt; aktuelle Betriebsfakten und offene Arbeiten
+> stehen in der [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Aussagen zu fehlender
+> Bereitstellung oder deaktivierter API sind historische Befunde.
+
 ## 1. Ergebnis in Kürze
 
 Die aktuelle Anwendung ist kein bereits portables VPS-Paket: Ingest und API sind zwar als getrennte Docker-Images angelegt, aber es gibt keine Compose-Datei oder VPS-spezifische Laufzeitkonfiguration. Der Ingest-Client und der API-Login laden Secrets direkt aus AWS Secrets Manager; Datenbank-URL und API-Proxy-Secret werden in AWS über Secret-Injektion bereitgestellt. Zusätzlich erzwingt die Datenbankverbindung TLS. Die Migration benötigt daher vor dem VPS-Umzug einen expliziten, testbaren Secret-Provider für lokale Secret-Dateien (oder einen gleichwertigen dedizierten Secret-Dienst), PostgreSQL-TLS, Compose-Betriebsdefinitionen und einen idempotenten Scheduler.

@@ -4,6 +4,14 @@
 
 > **Sicherheitsgrenze:** Bei der Erstellung dieses Plans wurden weder AWS-Ressourcen noch produktive Daten verändert und keine SSH-Verbindung aufgebaut. Zugangsdaten, Secret-Inhalte, echte Datenbank-URLs und produktive Daten gehören nicht in dieses Dokument, Tickets, Shell-Historie oder Logs.
 
+> **Aktualisierung 2026-11-08:** Dieser Fachplan dokumentiert die
+> Vorab-Analyse. Die VPS-Migration und der Frontend-Cutover wurden
+> anschließend umgesetzt; der aktuelle Betriebsstand steht in der
+> [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Aussagen dieses Plans über einen
+> ungeklärten AWS-/API-Status oder noch nicht ausgeführte Schritte sind
+> historische Befunde, keine aktuelle Betriebsanzeige.
+
 ## 1. Befund aus dem Repository
 
 ### Produktivpfad und Abhängigkeiten
@@ -149,4 +157,3 @@ AWS-RDS und Contabo-DB sind dann auseinander gelaufen. Nicht einfach DNS zurück
 5. Annahme für den Basisplan: Datenvolumen erlaubt Wartungsfenster und konsistenten finalen Dump/Restore. Falls dies nicht zutrifft, ist ein getesteter PostgreSQL-Replikations-/CDC-Plan erforderlich; Replikation wird hier nicht als vorhanden vorausgesetzt.
 6. Secrets werden nicht inventarisiert oder kopiert. Vor dem Cutover müssen Secret-Inventar, Rotationen und Zugriff durch zuständige Betreiber sicher erfolgen, ohne Werte offenzulegen.
 7. DNS-Anbieter, Domainkontrolle, Vercel-Projekt/Variablen und Status des Frontends sind nicht aus einer ausführbaren Umgebung verifiziert.
-

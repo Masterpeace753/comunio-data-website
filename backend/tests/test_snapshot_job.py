@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
+import src.ingest.snapshot_job as snapshot_job
 from src.ingest.snapshot_job import _upsert_market_values
 
 
@@ -41,3 +43,19 @@ def test_repeated_snapshot_updates_same_market_value_key_without_duplicate() -> 
     assert second_written == 1
     assert len(database.market_values) == 1
     assert next(iter(database.market_values.values())) == (1_250_000, 12)
+
+
+def test_market_value_snapshot_date_uses_utc_calendar_date(monkeypatch) -> None:
+    database = FakeDatabase()
+    real_datetime = datetime
+
+    class FixedDateTime:
+        @staticmethod
+        def now(tz):
+            assert tz is UTC
+            return real_datetime(2026, 1, 2, 0, 30, tzinfo=UTC)
+
+    monkeypatch.setattr(snapshot_job.dt, "datetime", FixedDateTime)
+    _upsert_market_values(database, [{"comunio_player_id": 1001, "value_eur": 500}], {1001: 7}, run_id=13)
+
+    assert (7, "2026-01-02") in database.market_values

@@ -52,6 +52,45 @@ def test_migrations_and_ap12_history_run_against_postgres(seeded_postgres, postg
     assert items["2026-01-04"]["percent_delta_first"] is None
 
 
+def test_ingest_runs_pagination_order_and_current_data_date(
+    seeded_postgres, postgres_connection, monkeypatch
+) -> None:
+    with postgres_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO ingest_runs
+                (run_type, status, started_at, finished_at, records_written, stage, error_code, error_message)
+            VALUES
+                ('manual', 'success', '2026-01-05T06:00:00Z', '2026-01-05T06:01:00Z', 2, 'snapshot', NULL, NULL),
+                ('scheduled', 'failed', '2026-01-05T06:00:00Z', '2026-01-05T06:01:00Z', 0, 'snapshot', 'snapshot_fetch_failed', 'private upstream error'),
+                ('scheduled', 'started', '2026-01-04T06:00:00Z', NULL, 0, 'login', NULL, NULL)
+            """
+        )
+    postgres_connection.commit()
+    test_client = _client(postgres_connection, monkeypatch)
+    try:
+        response = test_client.get("/api/v1/ingest/runs?limit=2&offset=0")
+    finally:
+        api_app.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["current_data_date"] == "2026-01-04"
+    assert body["total"] == 3
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert [item["status"] for item in body["items"]] == ["failed", "success"]
+    assert [item["id"] for item in body["items"]] == sorted(
+        [item["id"] for item in body["items"]], reverse=True
+    )
+    assert body["items"][0]["error_code"] == "snapshot_fetch_failed"
+    assert "private upstream error" not in response.text
+    assert "error_message" not in response.text
+    stale = test_client.get("/api/v1/ingest/runs?limit=1&offset=2")
+    assert stale.status_code == 200
+    assert stale.json()["items"][0]["status"] == "started"
+
+
 def test_postgres_repositories_cover_lists_and_empty_history(seeded_postgres, postgres_connection) -> None:
     player_id = seeded_postgres["player_id"]
     players, total = repositories.list_players(postgres_connection, 25, 0, None, None, None)

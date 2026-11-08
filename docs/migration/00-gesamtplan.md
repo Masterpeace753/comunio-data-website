@@ -1,6 +1,16 @@
 # Gesamtplan: Migration von AWS auf einen Contabo-VPS
 
-Stand: 2026-11-07. Status: Planung; keine Umsetzung oder Freigabe.
+Planungsstand: 2026-11-07.
+
+> **Aktualisierung 2026-11-08:** Dieser Gesamtplan hält den damaligen
+> Vorab-Planungsstand fest; die VPS-Migration und der Frontend-Cutover wurden
+> anschließend umgesetzt. Die VPS-API und der HTTPS-Proxy sind aktiv, der
+> VPS-Timer ist aktiviert und der erste reguläre Lauf war erfolgreich.
+> Aussagen zu ausstehender Umsetzung, API-Aktivierung oder Cutover in diesem
+> Plan sind daher historisch und kein aktueller Betriebsstatus. Maßgeblich
+> sind die [Projektübersicht](../../README.md), das
+> [VPS-Runbook](../../infra/vps/README.md) und das
+> [Betriebs-Update im Validierungsbericht](../../infra/vps/validation-report-2026-11-07.md).
 
 ## Grundlagen und Einzelpläne
 

@@ -3,6 +3,13 @@
 **Stand:** 2026-11-07  
 **Geltungsbereich:** Anwendung und Datenmigration. Keine Infrastrukturänderung wird mit diesem Dokument vorgenommen.
 
+> **Aktualisierung 2026-11-08:** Dieser Plan dokumentiert den
+> Vorab-Implementierungsstand. Die VPS-Migration und der Frontend-Cutover
+> wurden anschließend umgesetzt; aktuelle Betriebsfakten und offene Arbeiten
+> stehen in der [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Aussagen zu fehlender
+> Bereitstellung oder deaktivierter API sind historische Befunde.
+
 ## 1. Ziel, Befund und Annahmen
 
 Ziel ist, den derzeit AWS-gebundenen Backendbetrieb auf einem Contabo-Ubuntu-System abzulösen, ohne fachliches Verhalten zu verlieren. Dazu gehören die tägliche Comunio-Datenerfassung, PostgreSQL-Historie, die read-only FastAPI, Anmeldung und der bestehende Next.js-Frontendzugriff.

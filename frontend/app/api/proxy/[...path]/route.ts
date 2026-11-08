@@ -9,7 +9,10 @@ export async function GET(
   if (!base) {
     return NextResponse.json(
       { code: "api_not_configured", message: "API is not configured." },
-      { status: 503 },
+      {
+        status: 503,
+        headers: { "cache-control": "private, no-store, max-age=0" },
+      },
     );
   }
 
@@ -38,7 +41,10 @@ export async function GET(
   } catch {
     return NextResponse.json(
       { code: "api_timeout", message: "Upstream API unavailable." },
-      { status: 503 },
+      {
+        status: 503,
+        headers: { "cache-control": "private, no-store, max-age=0" },
+      },
     );
   }
 }

@@ -2,6 +2,14 @@
 
 > **Zweck:** Eigenständiger, repositorybezogener Ziel- und Migrationsplan. Dieses Dokument beschreibt eine Zielarchitektur und überprüfbare Arbeitsschritte; es bestätigt weder einen Contabo-Vertrag noch den Live-Zustand von AWS. Es wurden keine Server kontaktiert und keine Infrastruktur geändert.
 
+> **Aktualisierung 2026-11-08:** Dieser Architekturplan dokumentiert den
+> Vorab-Stand. Die VPS-Migration und der Frontend-Cutover wurden anschließend
+> umgesetzt; aktueller Betriebsstand und offene Arbeiten stehen in der
+> [Projektübersicht](../../README.md) und im
+> [VPS-Runbook](../../infra/vps/README.md). Die damaligen Aussagen zu
+> deaktivierter API und offenen Portabilitätsblockern sind keine aktuelle
+> Betriebsanzeige.
+
 ## Kurzempfehlung
 
 Für den aktuellen Umfang ist ein einzelner Ubuntu-VPS mit Docker Compose, PostgreSQL, FastAPI und einem geplanten Einmal-Ingest die praktikable Zielarchitektur. Das Next.js-Frontend bleibt zunächst auf Vercel. Ein TLS-Reverse-Proxy bildet den einzigen öffentlichen Backend-Einstieg. PostgreSQL wird nur intern erreichbar gemacht und durch verschlüsselte, externe Backups abgesichert.
