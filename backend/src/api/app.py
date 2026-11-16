@@ -261,14 +261,14 @@ def players(
     search: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
 ) -> Page[PlayerSummary]:
     rows, total = repositories.list_players(connection, limit, offset, team_id, position.value if position else None, search)
-    items = [PlayerSummary(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6]) for row in rows]
+    items = [PlayerSummary(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], club_name=row[7]) for row in rows]
     return Page(items=items, limit=limit, offset=offset, total=total)
 
 
 @app.get("/api/v1/players/{player_id}", response_model=PlayerDetail)
 def player(player_id: int, connection: Db) -> PlayerDetail:
     row = repositories.get_player(connection, player_id)
-    return PlayerDetail(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], source=row[7], first_seen_at=row[8], last_seen_at=row[9], updated_at=row[10])
+    return PlayerDetail(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], source=row[7], first_seen_at=row[8], last_seen_at=row[9], updated_at=row[10], club_name=row[11])
 
 
 @app.get(

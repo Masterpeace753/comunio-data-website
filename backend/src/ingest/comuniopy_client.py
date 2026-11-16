@@ -251,11 +251,13 @@ class ComunioPyClient:
                 continue
 
             club = p.get("club") or {}
+            owner = p.get("owner") or {}
             players_out.append({
                 "comunio_player_id": int(pid),
                 "name": str(name),
                 "position": normalized_pos,
-                "team_comunio_id": int(club["id"]) if club.get("id") else None,
+                "club_name": club.get("name") or None,
+                "team_comunio_id": int(owner["id"]) if owner.get("id") is not None else None,
             })
             market_values_out.append({
                 "comunio_player_id": int(pid),
@@ -299,6 +301,7 @@ class ComunioPyClient:
                     "comunio_player_id": int(player_id),
                     "name": str(name),
                     "position": self._normalize_position(position),
+                    "club_name": self._get_any(p, ("club_name",)),
                     "team_comunio_id": int(team_comunio_id) if team_comunio_id is not None else None,
                 }
             )

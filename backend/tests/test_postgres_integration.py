@@ -12,6 +12,7 @@ import src.api.app as api_app
 from src.api import auth
 from src.api.dependencies import get_db_connection
 from src.api import repositories
+from src.ingest.snapshot_job import _upsert_players, _upsert_teams
 
 
 pytestmark = pytest.mark.integration
@@ -104,6 +105,32 @@ def test_postgres_repositories_cover_lists_and_empty_history(seeded_postgres, po
     assert latest == date(2026, 1, 4)
     assert empty_history == []
     assert player_id > 0
+
+
+def test_player_club_and_owner_persist_and_update(postgres_connection, monkeypatch) -> None:
+    teams = _upsert_teams(postgres_connection, [
+        {"comunio_team_id": 99, "name": "Mein Team"},
+    ])
+    players = [{"comunio_player_id": 1, "name": "Spieler", "position": "ST",
+                "team_comunio_id": 99, "club_name": "FC Bayern"}]
+    player_id = _upsert_players(postgres_connection, players, teams)[1]
+    test_client = _client(postgres_connection, monkeypatch)
+    try:
+        player = test_client.get(f"/api/v1/players/{player_id}").json()
+        roster = test_client.get(f"/api/v1/players?team_id={teams[99]}").json()
+        assert player["club_name"] == "FC Bayern"
+        assert player["team_name"] == "Mein Team"
+        assert roster["items"][0]["club_name"] == "FC Bayern"
+        assert test_client.get(f"/api/v1/teams/{teams[99]}").json()["player_count"] == 1
+
+        players[0].update(team_comunio_id=None, club_name=None)
+        _upsert_players(postgres_connection, players, teams)
+        player = test_client.get(f"/api/v1/players/{player_id}").json()
+        assert player["team_name"] is None
+        assert player["club_name"] is None
+        assert test_client.get(f"/api/v1/teams/{teams[99]}").json()["player_count"] == 0
+    finally:
+        api_app.app.dependency_overrides.clear()
 
 
 def test_migrations_are_idempotent(migrated_postgres) -> None:

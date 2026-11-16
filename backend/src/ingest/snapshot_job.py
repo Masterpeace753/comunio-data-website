@@ -105,13 +105,14 @@ def _upsert_players(conn: PgConnection, players: list[dict], team_map: dict[int,
 
             cur.execute(
                 """
-                INSERT INTO players(comunio_player_id, name, position, team_id)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO players(comunio_player_id, name, position, team_id, club_name)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (comunio_player_id)
                 DO UPDATE SET
                     name = EXCLUDED.name,
                     position = EXCLUDED.position,
                     team_id = EXCLUDED.team_id,
+                    club_name = EXCLUDED.club_name,
                     last_seen_at = now(),
                     updated_at = now()
                 RETURNING id, comunio_player_id
@@ -121,6 +122,7 @@ def _upsert_players(conn: PgConnection, players: list[dict], team_map: dict[int,
                     player["name"],
                     player["position"],
                     team_fk,
+                    player.get("club_name"),
                 ),
             )
             row = cur.fetchone()

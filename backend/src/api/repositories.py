@@ -52,7 +52,7 @@ def list_players(connection: PgConnection, limit: int, offset: int, team_id: int
     filter_parameters = (team_id, team_id, position, position, f"%{search}%" if search else None, f"%{search}%" if search else None)
     query = f"""
         SELECT p.id, p.comunio_player_id, p.name, p.position, p.team_id, t.name,
-               mv.value_eur
+               mv.value_eur, p.club_name
         FROM players AS p
         LEFT JOIN teams AS t ON t.id = p.team_id
         LEFT JOIN LATERAL (
@@ -72,7 +72,7 @@ def get_player(connection: PgConnection, player_id: int) -> tuple:
         connection,
         """
         SELECT p.id, p.comunio_player_id, p.name, p.position, p.team_id, t.name,
-               mv.value_eur, p.source, p.first_seen_at, p.last_seen_at, p.updated_at
+               mv.value_eur, p.source, p.first_seen_at, p.last_seen_at, p.updated_at, p.club_name
         FROM players AS p
         LEFT JOIN teams AS t ON t.id = p.team_id
         LEFT JOIN LATERAL (
