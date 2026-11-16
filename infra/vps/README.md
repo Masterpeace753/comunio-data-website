@@ -47,9 +47,7 @@ On 2026-11-16, backend commit `f9e113e` was deployed: migration
 was updated for the next scheduled run. Public liveness and readiness returned
 200, unauthenticated player access returned 401, and player list/detail database
 queries succeeded. No snapshot had yet run after the rollout at that time.
-The later successful run and its incomplete player set are described below;
-the full player set and corrected assignments still require a successful run
-after the pagination fix is deployed.
+The later successful run and its incomplete player set are described below.
 
 A read-only import diagnosis on 2026-11-16 found 128 player rows in the
 database, of which 100 had been seen in the prior two days; the latest market
@@ -58,8 +56,17 @@ reported 600 market-value writes. Comunio reported 539 player hits, but
 requests using `offset=0`, `100`, and `200` returned the same first 100 player
 IDs. A request using `start=100` returned a different page. This identifies
 the source pagination parameter as the cause of the incomplete import; the
-local code now uses `start` and detects repeated pages. That correction has
-not yet been deployed or verified across all pages in production.
+corrected code uses `start` and detects repeated pages.
+
+On 2026-11-16, an Ingest image built locally from commit `bb72b90` was loaded
+onto the VPS and configured by immutable image ID. Compose configuration
+validated, and manual systemd run 91 completed successfully at 21:25 UTC
+with 539 writes and 539 distinct player market values for 2026-11-16. The
+database contained 565 player rows, including 26 not seen in that run;
+the existing import does not delete older player rows. The team named
+Philipp had 14 assigned players. The timer remained active and the public
+liveness and readiness endpoints returned 200. No migration or API deployment
+was required.
 
 The frontend detail-page fix was deployed and the operator verified team and
 player details and player history; corresponding VPS API requests returned

@@ -8,11 +8,9 @@
 >
 > Dokumentationsstand: 2026-11-16.
 > Dieses Dokument beschreibt die aktuelle Soll-/Code-Architektur. Der letzte
-> vollständige Deployment-Check stammt vom 2026-11-08. Eine gezielte,
-> read-only Importdiagnose vom 2026-11-16 ist im
-> [VPS-Runbook](infra/vps/README.md) dokumentiert. Die hier beschriebene
-> Pagination-Korrektur ist noch nicht deployed; andere Produktionsdienste
-> wurden bei dieser Diagnose nicht geprüft.
+> vollständige Deployment-Check stammt vom 2026-11-08. Die gezielte
+> Importdiagnose und das Ingest-Deployment vom 2026-11-16 sind im
+> [VPS-Runbook](infra/vps/README.md) dokumentiert.
 > Historische AWS-Entscheidungen stehen in den
 > [AWS-Altarchitektur-Notizen](docs/architecture/aws-legacy-notes.md).
 
