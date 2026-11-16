@@ -148,6 +148,17 @@ die API neu gestartet werden, damit der Prozess das rotierte Secret lädt.
 4. Erfolg oder Fehler wird über Exit-Code und strukturierte Laufereignisse
    an systemd beziehungsweise die Job-Logs zurückgegeben.
 
+### 3.3 Spielersuche und Seitennavigation
+
+Die Client-Komponente der Spielerliste liest den Suchbegriff (`search`) und
+den Seitenversatz (`offset`) aus der URL. Sie fordert über den Same-Origin-
+Proxy jeweils bis zu 25 Spieler von `GET /api/v1/players` an. Die API filtert
+den gesamten Spielerbestand nach Namen, bevor sie die Seite auswählt, und
+liefert die gefilterte Gesamtzahl (`total`) zurück. Vorwärts und zurück
+erhalten den Suchbegriff; eine neue Suche beginnt bei Versatz 0. URL und
+Browser-Verlauf ermöglichen die Rückkehr zu einer vorherigen Suche oder Seite.
+Diese Beschreibung betrifft den Code-Stand und bestätigt kein Deployment.
+
 ## 4. Secrets und Betriebsgrenzen
 
 - Produktionssecrets liegen in Host-Dateien außerhalb des Repositories und
