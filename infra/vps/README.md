@@ -1,5 +1,12 @@
 # VPS deployment and cutover
 
+> **Default platform:** This is the operational source of truth for new backend,
+> Ingest, database, and operations work. Target Ubuntu/Linux VPS with the
+> existing Docker Compose, FastAPI, PostgreSQL, Caddy, and systemd stack. Develop
+> and validate locally or in CI; do not develop directly on production.
+> `infra/aws/` is historical/optional and is changed or deployed only when
+> explicitly requested.
+
 This directory contains the deployment definition for the Ubuntu VPS:
 PostgreSQL, a one-shot Ingest container, a systemd **user** timer, and
 opt-in Compose profiles for the API and HTTPS proxy. As of 2026-11-08, the
@@ -79,7 +86,7 @@ evidence and historical test details.
   file does not publish HTTP, HTTPS, or Uvicorn ports; the active deployment
   uses the overlay to publish HTTP/HTTPS on Caddy only.
 - The database image has no default major version. Select and pin the image
-  only after checking the actual RDS engine version, extensions, collation,
+  only after checking the source PostgreSQL version, extensions, collation,
   encoding, schema, and supported upgrade/dump-restore path. Never use `latest`.
 
 The Compose file uses an explicit numeric `user:` for both services. The
@@ -131,7 +138,9 @@ deployment:
    `docker` group is effectively root-equivalent; grant it only with explicit
    approval. A user without sudo cannot install the units system-wide, change
    host ownership, grant Docker access, or enable lingering.
-3. Determine the actual RDS PostgreSQL major/minor version and extensions.
+3. Determine the source PostgreSQL major/minor version and extensions. The
+   RDS reference below describes the historical cutover source, not a runtime
+   dependency of the VPS deployment.
    Choose a destination major only after a compatibility review and a
    successful isolated restore. Set `POSTGRES_IMAGE` to an immutable
    version-and-digest reference for that choice. Set `PGDATA` and the volume

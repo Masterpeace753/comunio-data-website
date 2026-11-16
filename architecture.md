@@ -1,459 +1,224 @@
-# Zielarchitektur fuer das Comunio-Projekt
+# Comunio Data Website — aktuelle Architektur
 
-> **Betriebsstand 2026-11-08:** Dieses Dokument beschreibt die frühere
-> AWS-Ziel-/Referenzarchitektur und ist kein Laufzeitstatus. Der produktive
-> Ingest läuft inzwischen über einen systemd-User-Timer auf dem VPS; API und
-> HTTPS-Proxy sind dort ebenfalls aktiv. Für aktuelle Betriebsfakten und
-> offene Aufgaben gelten die [Projektübersicht](README.md) und das
-> [VPS-Runbook](infra/vps/README.md).
+> **Verbindlicher Standard:** Neue Backend-, Ingest-, Datenbank- und
+> Betriebsfeatures zielen auf Ubuntu/Linux VPS mit Docker Compose, FastAPI,
+> PostgreSQL, Caddy und systemd. Das Frontend bleibt auf Vercel. AWS ist eine
+> historische, optionale Alternative und wird nur auf ausdrückliche Anfrage
+> geändert oder ausgerollt.
+>
+> Dokumentationsstand: 2026-11-16.
+> Dieses Dokument beschreibt die aktuelle Soll-/Code-Architektur. Der letzte
+> im Repository dokumentierte Live-Check stammt vom 2026-11-08; diese
+> Aktualisierung prüft keine laufenden Produktionsdienste. Für Betriebsstatus
+> und Deploymentdetails ist das [VPS-Runbook](infra/vps/README.md) maßgeblich.
+> Historische AWS-Entscheidungen stehen in den
+> [AWS-Altarchitektur-Notizen](docs/architecture/aws-legacy-notes.md).
 
-## 1. Kontext und Leitplanken
+## 1. Systemkontext und Plattform
 
-Diese Architektur basiert auf dem Lastenheft und der Projektdokumentation mit folgenden festen Vorgaben:
-
-- Datenquelle fuer Comunio-Daten: Comunio-REST-API, angesprochen ueber den eigenen `ComunioPyClient`-Adapter
-- Architektur: Microservices, REST-Schnittstellen
-- Plattform der früheren Referenzarchitektur: AWS für Backend und
-  Datenbank, Vercel für das Frontend
-- Früherer Betrieb: containerisiert mit Docker auf AWS ECS/Fargate;
-  Kubernetes ist keine AP-11-Voraussetzung
-- Nicht-funktional: unter 2 Sekunden Ladezeit, 99.9 Prozent Verfuegbarkeit, OWASP Top 10 Schutz, Monitoring und Alerting
-
-## 2. Architekturueberblick
+Die Plattform liest Comunio-Daten täglich ein, speichert Snapshots in
+PostgreSQL und stellt sie über eine read-only FastAPI dem Next.js-Frontend zur
+Verfügung. Der Browser kommuniziert nur mit der Vercel-Origin. Next.js
+Serverrouten vermitteln authentifizierte API-Aufrufe zwischen Vercel und dem
+VPS.
 
 ```mermaid
 flowchart LR
-  U[Browser] -->|HTTPS, same-origin| FE[Vercel Next.js Frontend und BFF]
-  FE -->|Server-Proxy: Cookie plus Proxy-Secret| CF[CloudFront API Ingress]
+  B[Browser] -->|HTTPS, same-origin| V[Vercel: Next.js Frontend und BFF]
+  V -->|HTTPS: Proxy-Bearer; Session-Cookie für geschützte Aufrufe| C[Caddy auf Ubuntu VPS]
 
-  subgraph AWS
-    CF -->|HTTPS/TLS origin| ALB[ALB HTTPS Listener]
-    ALB --> API[ECS Fargate FastAPI Service]
-    API --> DB[(Private PostgreSQL)]
-    API -. optional P2 .-> C[(Redis Cache)]
-
-    subgraph Data Pipeline
-      SCH[Scheduler<br/>EventBridge oder CronJob] --> ING[Ingest Service<br/>Python + eigener ComunioPyClient]
-      ING --> DB
-      ING --> OBS[Logs/Metrics/Alerts]
-    end
-
-    API --> OBS
+  subgraph VPS[Ubuntu/Linux VPS]
+    C -->|internes Compose-Netz| A[FastAPI API]
+    A -->|TLS, API-Clientzertifikat, Read-only-Rolle| DB[(PostgreSQL)]
+    T[systemd User-Timer] -->|one-shot Compose-Job| I[Ingest]
+    I -->|TLS, Ingest-Clientzertifikat, Schreibrolle| DB
   end
+
+  I -->|HTTPS| API[Comunio REST API]
 ```
 
-## 3. Service-Schnitt
-
-### 3.1 Ingest Service
-
-- Verantwortung:
-  - Login und Datenabruf ueber den eigenen `ComunioPyClient` gegen die Comunio-REST-API
-  - Snapshot-Erzeugung fuer Marktwerte, Transfermarkt und Punktedaten
-  - Idempotentes Schreiben in die Datenbank
-- Trigger:
-  - Stufe 1 manuell
-  - ab Stufe 2 taeglich geplant (z. B. 06:00 UTC)
-- Früherer AP-9-AWS-Betrieb: EventBridge startete den ECS-Fargate-Task
-  täglich um 06:00 UTC mit `run_type=scheduled`. Der aktuelle VPS-Scheduler
-  ist im [VPS-Runbook](infra/vps/README.md) dokumentiert.
-- AP-9-Resilienz: EventBridge verwendet zwei Retries innerhalb einer Stunde; danach wird das Ereignis in der verschluesselten SQS-DLQ abgelegt.
-- Fehlerbehandlung:
-  - Retry mit Exponential Backoff
-  - Circuit-Breaker fuer externe API-Fehler
-  - Alert bei wiederholtem Fehler oder leerem Snapshot
-
-### 3.1.1 AP-9 Scheduler-Betriebsvertrag
-
-- Die frühere Rule `comunio-prod-snapshot-schedule` verwendete die freigegebene Cron-Konfiguration und startete genau einen Fargate-Task pro Ausführung.
-- Der frühere Task nutzte eine gepinnte Fargate-Plattformversion und schrieb `run_started`, `db_verify` sowie `run_success` oder `run_failed` in CloudWatch.
-- Fachliche Idempotenz bleibt ueber die bestehenden Snapshot-Constraints erhalten; ein erneuter Lauf darf keine doppelten Marktwertzeilen erzeugen.
-- Eine Aktivierung gilt erst nach drei aufeinanderfolgenden erfolgreichen Scheduler-Fenstern als stabiler AP-9-Nachweis. Dieser Nachweis wurde am 2026-08-31 erbracht: fuenf aufeinanderfolgende Tagesfenster (2026-08-27 bis 2026-08-31) mit `run_type=scheduled`, `run_success` und ohne Duplikate in `market_values` (siehe `implementierungsplan.md`, Abschnitt 19).
-
-### 3.1.2 AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check
-
-- Ziel: der Ingest-Task erkennt selbststaendig, ob ein Lauf erfolgreich war oder an einem Login-Problem gescheitert ist, und behandelt Login-Fehler robust, bevor der Lauf endgueltig als fehlgeschlagen gilt.
-- Ablauf im Container (`backend/src/ingest/runner.py`, Funktion `_login_with_retry`):
-  1. Login-Versuch 1. Bei Erfolg laeuft der Snapshot-Flow wie bisher weiter.
-  1. Bei `ComunioLoginError` wartet der Prozess 5 Minuten (`COMUNIO_LOGIN_RETRY_WAIT_SECONDS`, Default 300s) und versucht den Login erneut.
-  1. Nach insgesamt 3 Versuchen (`COMUNIO_LOGIN_RETRY_ATTEMPTS`, Default 3) ohne Erfolg wird der Lauf mit `run_failed`, `stage=login` beendet.
-- Kein zusaetzlicher Shutdown-Schritt noetig: Der ECS-Fargate-Task ist ein einmaliger, nicht dauerhaft laufender Task (kein ECS Service). Der Container stoppt beim Prozessende automatisch identisch, egal ob der Lauf mit Exit-Code 0 (Erfolg) oder Exit-Code 1 (Login-Retries erschoepft) endet.
-- Automatischer AWS-Check: Ein CloudWatch Logs Metric Filter (`login-retries-exhausted`) auf das Muster `event=run_failed stage=login` speist einen CloudWatch Alarm. Der Alarm kann optional ueber `alert_sns_topic_arn` benachrichtigen; ohne Konfiguration bleibt er sichtbar in CloudWatch, ohne zusaetzliche Kosten fuer Benachrichtigungsinfrastruktur zu erzeugen.
-- Konfigurierbarkeit: `login_retry_attempts` und `login_retry_wait_seconds` sind Terraform-Variablen, die als Container-ENV `COMUNIO_LOGIN_RETRY_ATTEMPTS`/`COMUNIO_LOGIN_RETRY_WAIT_SECONDS` durchgereicht werden.
-- Abgrenzung zu EventBridge-Retries: Der EventBridge-Retry (`maximum_retry_attempts=2`) greift nur, wenn der `RunTask`-API-Aufruf selbst fehlschlaegt (z. B. Kapazitaets- oder IAM-Fehler). Login-Retries sind ein separates, anwendungsinternes Verhalten innerhalb eines einzelnen Tasks.
-
-### 3.2 Backend API Service (FastAPI)
-
-- Verantwortung:
-
-  - Read-only-REST-Endpunkte fuer Frontend und spaetere Integrationen
-  - Abfragen und Projektionen aus PostgreSQL; AP-12 berechnet Marktwert-Deltas read-only zur Laufzeit
-  - keine Schreiboperationen und keine Comunio-Kommunikation innerhalb von Request-Handlern
-
-- AP-12-Delta-Projektion:
-
-  - `snapshot_date` ist die fachliche Vergleichsachse; `captured_at` bleibt ein technischer Erfassungszeitpunkt.
-  - `previous_snapshot_date` bezeichnet ausschliesslich den exakten Kalendertag davor. Fehlt dieser Snapshot, bleiben Vortagsdelta und Vortagsprozentwert `null`.
-  - `first_snapshot_date` und `first_value_eur` beziehen sich auf die gesamte Spielerhistorie, auch wenn die API-Abfrage einen Zeitraum filtert.
-  - `delta_first_eur` ist beim ersten vorhandenen Snapshot `0`; Prozentwerte sind bei fehlender Referenz oder Referenzwert `0` `null`.
-  - Negative Deltas sind gueltige Wertverluste. Delta-Felder werden nicht persistiert, sondern mit PostgreSQL-Fensterfunktionen und einer read-only-Projektion berechnet.
-  - Die Projektion berechnet Referenzen vor Datumsfilter und Pagination. Eine persistierte Delta-Tabelle oder ein Cache ist nicht Bestandteil von AP-12; AP-13 entscheidet anhand gemessener P95-Werte ueber Optimierungen.
-
-- Vertragsbasis:
-
-  - Versionierter Namespace `/api/v1`
-  - `GET /api/v1/players`, `/players/{id}`, `/players/{id}/history`
-  - `GET /api/v1/teams`, `/teams/{id}` und `/api/v1/transfermarket`
-  - `GET /health/live` ohne Datenbankabhaengigkeit und `/health/ready` mit Datenbankpruefung
-  - Pagination mit `limit`/`offset`, harter Obergrenze 100 und deterministischer Sortierung
-  - ISO-8601 fuer Zeitpunkte, `YYYY-MM-DD` fuer Snapshot-Tage
-  - 404 fuer unbekannte Ressourcen, 422 fuer syntaktisch ungueltige Parameter, 503 bei nicht verfuegbarer Datenbank
-  - Fehlerantworten enthalten keine SQL-, DSN-, Token- oder Stacktrace-Details
-  - CORS wird ueber `API_ALLOWED_ORIGINS` auf die Vercel-Produktions-Origin und explizit freigegebene Preview-/Lokal-Origins begrenzt.
-
-- Laufzeitgrenze:
-
-  - Die API wird als eigener ECS/Fargate-Service betrieben und nicht als alternatives Kommando im einmaligen Ingest-Task.
-  - API-Tasks erhalten nur Datenbankzugriff und benoetigen keine Comunio-Credentials.
-  - Die API verwendet einen separaten PostgreSQL-Read-only-User und ein separates Secrets-Manager-Secret; das Ingest-Secret wird nicht geteilt.
-  - Repository-Befund: Terraform konfiguriert den API-ALB als oeffentlich (`internal = false`) mit einem HTTP-Listener auf Port 80; ein CloudFront-Frontend, HTTPS-Listener/Zertifikat am Origin und CloudFront-beschraenkter ALB-Zugriff sind darin nicht enthalten. Das beschreibt den eingecheckten Konfigurationsstand, nicht den Live-Zustand eines AWS-Kontos.
-  - AP-14 Terraform-Konfiguration im Arbeitsbaum legt den API-ALB intern (private Subnetze) an und bindet CloudFront ueber ein VPC-Origin (HTTP innerhalb von AWS) an; die ALB-Security-Group erlaubt Port 80 nur von der CloudFront-VPC-Origin-Security-Group. Es werden keine eigene Domain und kein ACM-Zertifikat benoetigt. Das ist Konfigurationscode, kein Nachweis einer AWS-Aenderung oder eines erreichbaren/deployed Endpunkts.
-
-### 3.3 Frontend Service (React auf Vercel)
-
-- Verantwortung:
-  - Dashboard, Team- und Spieleransichten
-  - Historische Visualisierung von Marktwerten
-  - Filter, Suche, Sortierung und Vergleich
-  - Login-Seite und Session-Guard (AP-14; Zielarchitektur und Arbeitsbaumstatus in Abschnitt 5.1.1)
-- Performance:
-  - statische Assets via CDN
-  - API-Responses gecached und pagination-faehig
-
-### 3.4 Datenbank Service (PostgreSQL)
-
-- Verantwortung:
-  - Persistenz aller Stammdaten, Snapshots und Event-Historien
-  - Konsistente Historisierung fuer Delta-Berechnungen
-- Optional:
-  - TimescaleDB fuer grosse Zeitreihenvolumen
-
-### 3.5 Observability Service
-
-- Logging: strukturierte Logs (JSON)
-- Metrics: Latenz, Fehlerquote, Snapshot-Volumen, API Throughput
-- Alerts:
-  - Ingest-Job fehlgeschlagen
-  - keine neuen Daten innerhalb Intervall
-  - API Fehlerquote ueber Schwellwert
-- Kostenentscheidung fuer den API-MVP: API-P95, 4xx- und 5xx-Raten werden ueber die bereits vorhandenen nativen ALB-Metriken in CloudWatch alarmiert. Es werden keine hochdimensionalen Custom Metrics und kein zusaetzlicher Monitoring-Service eingefuehrt.
-
-**Kostenentscheidung fuer den Frontend-Proxy (2026-09-20):** Der MVP nutzt den serverseitigen Next.js-Proxy auf Vercel vor dem AWS-API-ALB. Ein separater ECS-/Fargate-Proxy, API Gateway und eine verpflichtende WAF werden aus Kostengruenden nicht als MVP-Bausteine betrieben. AWS WAF wird als P2-Haertung nach dem MVP bewertet; Ausloeser sind messbare Last, Angriffsmuster, Compliance-Anforderungen oder wiederholte API-P95-/Fehleralarme. Der AWS-API-ALB bleibt bis zur spaeteren Netzwerk-Haertung der dokumentierte Zwischenstand; variable Vercel-, ALB- und Transferkosten werden ueber die vorhandenen Alarme und das Release-Review beobachtet. Eine Neubewertung erfolgt bei messbarer Last, Sicherheits-/Compliance-Vorgabe oder wiederholten API-P95-/Fehleralarmen. Vor dem Go-live muss die Erreichbarkeit des API-Endpunkts aus Vercel geklaert werden; ein `internal = true` gesetzter ALB ist ohne private Netzwerkanbindung kein gueltiges Ziel fuer den Vercel-Proxy.
-
-## 4. Datenfluss
-
-1. Scheduler startet Ingest-Run.
-1. Ingest ruft Daten ueber den `ComunioPyClient` aus der Comunio-REST-API ab.
-1. Daten werden validiert, normalisiert und idempotent gespeichert.
-1. API liest normalisierte Daten und liefert aggregierte Antworten.
-1. Frontend visualisiert die Daten und aktualisiert Dashboards.
-
-## 5. Sicherheitsarchitektur
-
-- Transportverschluesselung: TLS durchgaengig
-- Secrets: nur ueber Secret-Store, niemals im Code
-- API-Schutz:
-  - Rate Limiting
-  - Input-Validierung
-  - Security Header
-- Zugriffsschutz:
-  - Rollen- und Rechtekonzept fuer Admin und User
-  - Least-Privilege IAM fuer AWS-Rollen
-- Frontend-Integration:
-  - Vercel ist die einzige standardmaessig erlaubte Browser-Origin; konkrete Produktions- und Preview-Origins werden per `API_ALLOWED_ORIGINS` konfiguriert.
-- OWASP Top 10 Massnahmen:
-  - zentrale Abhaengigkeits-Scans
-  - sichere Session- und Token-Verwaltung
-  - Schutz vor Injection und Broken Access Control
-
-### 5.1 Production Security Gates (verbindlich)
-
-- Gate S1 Credentials: In `prod` und `production` sind nur AWS Secrets Manager Credentials zulaessig. ENV-Fallback ist in Produktion verboten. **Umgesetzt (AP-10a):** `backend/src/config.py` validiert jetzt, dass `APP_ENV=prod|production` zwingend `COMUNIO_REQUIRE_SECRET_MODE=true` erfordert; ansonsten wird ein `ValueError` geworfen, bevor der Lauf gestartet wird.
-- Gate S2 DB Transport: Datenbankverbindungen muessen TLS mit `sslmode=require` oder staerker erzwingen, Zielprofil `verify-full`.
-- Gate S3 Logging: Lauf- und Fehlerlogs muessen strukturiert sein (`event`, `stage`, `run_id`, `error_code`) und duerfen keine rohen Exception-Details enthalten. **Umgesetzt (AP-10a):** `backend/src/ingest/runner.py` ersetzt `detail=str(exc)` durch eine feste, geschlossene Taxonomie (`_safe_detail`) mit den Werten `authentication_failed`, `snapshot_fetch_failed`, `database_persistence_failed`, `unexpected_error`; Regressionstests in `backend/tests/test_scheduled_runner.py` stellen sicher, dass DSNs, Bearer-Tokens, ARNs, Dateipfade und E-Mail-Adressen nie im Log erscheinen.
-- Gate S4 Snapshot Input: Lokale Snapshot-Dateien sind nur innerhalb eines erlaubten Basisverzeichnisses und unter einem Groessenlimit zulaessig.
-- Gate S5 Image Integrity: ECS-Container-Images muessen immutable Referenzen verwenden; `latest` ist in Produktion verboten. **Umgesetzt (AP-10b/AP-10a):** `infra/aws/terraform/variables.tf` verwirft `latest`, und `infra/aws/terraform/main.tf` setzt `image_tag_mutability = "IMMUTABLE"`.
-- Gate-Policy: Bei Verstoessen gegen S1-S5 ist ein Production-Deploy blockiert.
-
-### 5.1.1 Benutzeranmeldung (AP-14.1 bis AP-14.6, Zielarchitektur und Arbeitsbaumstatus)
-
-Ziel: Ein Aufruf bestehender Vercel-Links ohne gueltige Session zeigt die Login-Seite; nach erfolgreichem Login geht es zum angeforderten Ziel zurueck. Es gibt genau einen User. Der Browser spricht ausschliesslich die Vercel-Origin an; Next.js-Serverrouten sind der BFF fuer Authentifizierung und API. Der Proxy-Token aus AP-13.a bleibt als unabhaengige zweite Schutzschicht bestehen.
-
-```text
-Browser --HTTPS--> Vercel (Next.js: Login, Guard, same-origin /api/auth/* und /api/proxy/*)
-                      --HTTPS--> CloudFront (Viewer HTTPS, keine Auth/API-Caches)
-                                    --HTTPS/TLS--> ALB (HTTPS-Listener, nur CloudFront-Zugriff)
-                                                       --> FastAPI (/auth/*, /api/v1/*)
-                                                            |--> Secrets Manager (comunio/auth)
-                                                            \--> PostgreSQL (Read-only)
-```
-
-- **AP-14.1 — HTTPS und Origin-Schutz (Produktionsblocker):** Browser-seitiges HTTPS allein reicht nicht. CloudFront erzwingt Viewer-HTTPS (Standard-`*.cloudfront.net`-Zertifikat) und erreicht den ALB ueber ein CloudFront-VPC-Origin. Der ALB ist intern (private Subnetze) und ueber das Internet nicht erreichbar; seine Security Group nimmt nur Verkehr der CloudFront-VPC-Origin-Security-Group an. Der CloudFront-zu-ALB-Hop laeuft per HTTP im privaten AWS-Netz; wer Ende-zu-Ende-TLS braucht, ergaenzt spaeter Domain, ACM-Zertifikat und HTTPS-Listener. CloudFront darf fuer `/auth/*` und `/api/v1/*` nicht cachen und muss benoetigte Cookie-, `Authorization`- und `Origin`-Header sowie `Cookie`- und `Set-Cookie`-Werte korrekt weiterleiten.
-- **AP-14.2 — Auth-Secret und IAM:** Eigenes Secrets-Manager-Secret `comunio/auth`, getrennt von Comunio-, DB- und Proxy-Secrets. JSON-Felder: `username`, `passwordHash` (bcrypt, Cost 12) und `jwtSecret` (mindestens 32 Byte kryptographisch zufaellig). Betreiber legen den Wert manuell an; weder Secret-Wert noch Version kommt in Terraform-State, ENV, Logs oder Git. Terraform erhaelt nur `auth_secret_arn` und setzt `AUTH_SECRET_ARN`; die API-Task-Rolle bekommt ausschliesslich `secretsmanager:GetSecretValue` auf genau diesen ARN. Der Standard-KMS-Key wird verwendet. Die API laedt das Secret beim ersten Zugriff und cached es im Prozess; ein Rollout/Neustart der API-Tasks ist nach Rotation erforderlich, damit der Cache den neuen Wert nutzt.
-- **AP-14.3 — Backend-Session:** `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. Login vergleicht den Username constant-time und fuehrt `bcrypt.checkpw` auch bei unbekanntem Username aus; Fehler sind ein nicht unterscheidbares generisches `401`. Erfolg gibt ein fest auf HS256 begrenztes JWT mit `sub`, `iat`, `exp` (8 Stunden), `iss` und `aud` aus. Die Middleware prueft JWT-Signatur und Claims bei jedem geschuetzten Request. Ausnahmen sind nur Login und die vereinbarten Health-Routen; Logout loescht das Cookie. Fehlt `AUTH_SECRET_ARN` in Production oder kann das Secret nicht gelesen werden, startet/arbeitet Auth fail-closed und gibt keinen anonymen API-Zugriff frei. Das AP-13.a-Proxy-Bearer-Secret bleibt zusaetzlich erforderlich.
-- **Cookie und Browsergrenze:** `token=<jwt>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`, ohne `Domain`. Der Browser ruft nur gleich-origin Next.js-Routen auf. Diese reichen `Cookie` zum Backend und `Set-Cookie` zum Browser durch; API-CORS mit Credentials und Third-Party-Cookies werden nicht benoetigt. Kein Token in localStorage, HTML oder Client-Bundle.
-- **AP-14.4 — Missbrauchsschutz:** In-Memory-Limit pro Quell-IP auf `/auth/login` (vorgesehen: 5 Versuche pro 5 Minuten, mit `429` nach Ueberschreitung). Das Limit ist pro API-Prozess und damit kein clusterweiter Schutz; mehrere Tasks koennen das effektive Limit erhoehen. Fuer einen Ein-Task-MVP ist es ein Basisschutz; bei horizontaler Skalierung muss es durch ein geteiltes Limit oder einen Edge-Schutz ersetzt/ergaenzt werden. Schreibende Auth-Requests (Login/Logout) pruefen `Origin` gegen eine exakte Allowlist der Vercel-Origin; fehlende oder nicht erlaubte Origins werden abgewiesen. `SameSite=Strict` ist zusaetzliche CSRF-Abwehr. Kein WAF ist AP-14-Voraussetzung.
-- **AP-14.5 — Frontend:** `/login` bietet den Login und verarbeitet einen validierten `next`-Pfad (nur lokale Pfade, kein offener Redirect); das Formular sendet an eine gleich-origin Next.js-Serverroute. Der Next.js-Request-Guard (`proxy.ts`) leitet fehlende Cookies zu `/login?next=...`; das Vorhandensein des Cookies ist nur ein UX-Guard, keine JWT-Verifikation. Die Backend-Middleware ist die Autoritaet. Serverrouten `/api/auth/*` leiten Login/Logout/Me samt Request-Cookie, Origin und Set-Cookie weiter und fuegen das Proxy-Secret nur serverseitig hinzu. Der bestehende `/api/proxy/*` reicht Session-Cookie sowie Proxy-Secret zum Backend weiter; geschuetzte API-Responses landen nicht in gemeinsam genutzten Caches (`no-store`/privat). Der Browser erhaelt nie das Proxy-Secret.
-- **AP-14.6 — Nachweise:** automatisierte Backend- und Frontend-Tests muessen Erfolg/Fehler fuer Login, falschen Username/Passwort, manipuliertes, abgelaufenes und `alg=none`-JWT, fehlende Session, Cookie-Flags, Rate-Limit, Origin-Ablehnung und Logout abdecken. Ein Operator-Runbook muss Secret-Anlage, least-privilege IAM, Passwort-/JWT-Rotation sowie Task-Neustart und sichere End-to-End-Abnahme dokumentieren.
-- **Kosten:** Das Secret verursacht einen kleinen laufenden Secrets-Manager-Aufwand; CloudFront- und TLS-/ALB-Kosten sind anhand der gewaehlten Region, Datenmenge, Requests und ggf. Zertifikats-/Domain-Konfiguration zu kalkulieren. Keine zusaetzliche Compute-Infrastruktur ist fuer den Auth-Code vorgesehen. Free-Tier-Verfuegbarkeit ist kein Architektur- oder Kosten-Gate und muss fuer Account und Nutzung geprueft werden.
-
-**Implementierungsstand:** Backend-/Frontend-Auth, automatisierte Tests, CloudFront-Origin-TLS, Auth-Secret-IAM und das Operator-Runbook sind im Arbeitsbaum umgesetzt. Backendtests (47 passed, 3 skipped), Frontendtests (23 passed), Frontend-Lint und Produktionsbuild sowie Terraform-Formatierung und -Validierung wurden erfolgreich ausgefuehrt. Dies belegt weder einen gemergten Stand noch eine AWS-Bereitstellung. Keine AWS-Ressourcen wurden angewendet und keine Live-Endpunkte geprueft.
-
-**Verbleibende Produktionsvoraussetzungen:** Betreiber muessen das Auth-Secret manuell anlegen und dessen ARN konfigurieren sowie Vercel-Umgebungsvariablen abstimmen; Domain und ACM-Zertifikat sind nicht noetig. Danach sind ein gepruefter Terraform-Plan, freigegebener Apply und Ende-zu-Ende-Abnahme in einer kontrollierten Umgebung erforderlich. Das Login-Limit nutzt bei CloudFront `CloudFront-Viewer-Address`; diese Ableitung setzt voraus, dass der ALB nur ueber CloudFront erreichbar ist. Das Limit bleibt pro API-Prozess und ist vor horizontaler Skalierung durch einen gemeinsamen Zaehler oder Edge-Schutz zu ersetzen/ergaenzen. Das AP-13.a-Bearer-Secret wird fuer `/auth/*` und `/api/v1/*` geprueft (in Production ist es beim Start verpflichtend).
-
-Umsetzungsplan und Definition of Done: `implementierungsplan.md`, Abschnitt AP-14.
-
-### 5.2 Terraform-State und Secret-Lifecycle
-
-- Terraform-State darf nicht in Git oder auf unverschluesselten lokalen Arbeitsplaetzen liegen.
-- Das Produktions-Backend verwendet ein versioniertes, verschluesseltes S3-Backend mit aktivierter Public-Access-Sperre und State-Locking.
-- Der State-Zugriff erfolgt nur ueber einen dedizierten Deployment-Principal mit minimalen S3- und Locking-Rechten.
-- **Verifiziert (2026-08-31):** `git ls-files`/`git log` bestaetigen, dass `terraform.tfstate` und `terraform.tfstate.backup` nie in die Git-Historie aufgenommen wurden (nur `.terraform.lock.hcl` ist getrackt); `.gitignore` schliesst `*.tfstate*` und `*.tfvars` bereits seit Projektstart aus. Es besteht daher kein Git-/GitHub-Expositionsvektor.
-- **Umgesetzt (AP-10a, Schritt 2):** `infra/aws/terraform/state_backend.tf` legt ein versioniertes, AES256-verschluesseltes S3-Bucket (`<prefix>-tfstate`, Public-Access-Sperre, 90-Tage-Lifecycle fuer alte Versionen) sowie eine als Legacy-Ressource verwaltete DynamoDB-Tabelle an. Das aktive `backend.tf` nutzt Terraform-native S3-Lockfiles (`use_lockfile = true`); `dynamodb_table` ist deprecated und wird nicht mehr verwendet. Eine State-Migration bzw. Reconfiguration bleibt ein manueller Schritt gemaess Runbook in `infra/aws/README.md`.
-- **Rotationsentscheidung (dokumentierte Ausnahme):** Da kein Git-Expositionsvektor besteht und der State nur lokal auf einem Einzelarbeitsplatz vorlag, wird die RDS-Master-Passwort-Rotation nicht sofort erzwungen. Rotation bleibt als P2-Massnahme (Runbook-Bereitschaft) dokumentiert und wird nachgeholt, sobald ein zweiter Mitwirkender oder ein konkreter Verdachtsfall auftritt.
-- RDS- und Comunio-Secrets erhalten einen dokumentierten Rotationsprozess. Automatische Rotation wird erst aktiviert, wenn der Rotationshandler inklusive Reconnect-Test produktionsreif ist.
-- Secret-Werte, Secret-Versionen und Rotationsdetails werden nicht im fachlichen Datenmodell gespeichert. CloudTrail und Secrets Manager liefern den technischen Audit-Trail.
-
-### 5.2.1 Optionale Haertung fuer private Networking (2026-09-12)
-
-- **Status (2026-09-12):** Option D (MVP Standard mit `assign_public_ip=true` und Egress-Only SG) ist produktionsbereit in AWS ausgerollt, erfolgreich per `terraform apply` synchronisiert (`Apply complete!`) und mit `Exit-Code 0` verifiziert.
-- **Vorbereitete Optionen für Egress-Härtung (AP-10a.6):**
-  - Option A (`enable_nat_gateway = true`): AWS Managed NAT Gateway (~$33/Mo).
-  - Option B (`enable_nat_instance = true`): Low-Cost `t4g.nano` NAT Instance (~$3/Mo).
-  - Beide Optionen sind im Terraform-Code (`network.tf`, `variables.tf`) schaltbar implementiert und im AWS-State synchronisiert.
-- **Voraussetzungen fuer die spaetere Umschaltung auf `assign_public_ip = false`:**
-  1. Freigabe und Umschaltung auf Option A oder Option B in `terraform.tfvars`.
-  1. `terraform apply` zur Bereitstellung der NAT-Route.
-  1. ECS-Task ohne Public IP starten (`assign_public_ip=false`) und mit `Exit-Code 0` verifizieren.
-
-### 5.3 Logging-Sanitization und Diagnose
-
-- Standardlogs enthalten nur `event`, `stage`, `run_id`, `correlation_id`, `error_code` und eine kurze, sanitizte Diagnose.
-- Rohe Exception-Texte, Connection Strings, Tokens, Secret-Namen, E-Mail-Adressen und lokale Pfade werden nicht geloggt.
-- Tiefere Diagnose erfolgt ueber geschuetzte AWS-Diagnosekanaele mit eingeschraenktem Zugriff und definierter Aufbewahrung.
-
-## 6. Verfuegbarkeit und Skalierung
-
-- Ziel: 99.9 Prozent Uptime
-- Production-Ziel: mindestens zwei API-Tasks in privaten Subnets hinter einem ALB; Single-AZ-RDS bleibt eine dokumentierte MVP-Ausnahme.
-- Read-Optimierung zuerst ueber PostgreSQL-Indizes und begrenzte Queries; Redis ist eine messwertgesteuerte P2-Massnahme.
-- Entkopplung Ingest und API, damit Lastspitzen den Live-Zugriff nicht blockieren
-- Rollierende ECS-Deployments mit Health Check und Rollback
-
-## 7. Performance-Strategie
-
-- API-Ziel: P95 Antwortzeit unter 500 ms fuer Standard-Queries
-- Endnutzer-Ziel: Seitenladezeit unter 2 Sekunden
-- Massnahmen:
-  - Query-Optimierung und Composite-Indizes
-  - Ergebnis-Caching fuer haeufige Rankings und Historien
-  - Pagination und begrenzte Payload-Groessen
-
-### 7.1 AP-11 API-Betriebsvertrag
-
-- Standardabfragen muessen `limit <= 100` erzwingen und werden mit P95 unter 500 ms gemessen.
-- API-Logs enthalten Request-ID, Route, Statusklasse und Latenz, aber keine sensiblen Query- oder Datenbankdetails.
-- Vor einem oeffentlichen Production-Expose sind TLS, CORS-Allowlist, Rate Limiting und eine getrennte Read-only-Datenbankrolle verbindlich zu entscheiden.
-- ALB, API-Service und RDS werden mit getrennten Security Groups betrieben; RDS akzeptiert Verbindungen nur von API und Ingest.
-- Die History-Antwort erweitert `MarketValuePoint` additiv um Referenzdaten, absolute Deltas und Prozentdeltas. Die neuen Felder sind bei fehlenden Referenzen nullable.
-- AP-12 bleibt kostenneutral: keine neue AWS-Ressource, kein neuer Schreibpfad und keine persistierten Delta-Spalten. AP-13 misst History-P95, Datenbanklaufzeit und gelesene Zeilen.
-
-### 7.2 AP-13 Integrations- und Performancevertrag
-
-- CI verwendet PostgreSQL 16 als kurzlebigen Servicecontainer. Alle Migrationen werden auf einer leeren Datenbank angewendet und erneut idempotent ausgefuehrt.
-- Integrationstests pruefen echte Repository-SQL-Abfragen, AP-12-Randfaelle, Constraints, Listenabfragen, leere Ergebnisse und Fehlerpfade. Mock-Tests bleiben auf Handler- und Mapping-Logik begrenzt.
-- Der OpenAPI-Vertrag wird aus `app.openapi()` geprueft. Der versionierte `/api/v1`-Namespace, ausschliessliche GET-Methoden, AP-12-Nullable-Felder und die History-Fehlerantworten sind Contract-Gates.
-- Das Benchmark-Skript `backend/scripts/benchmark_api.py` misst P50, P95, P99 und Maximalzeit getrennt nach Repository-/DB-Operationen. Der Benchmark erwartet synthetische Daten ueber `TEST_DATABASE_URL` und schreibt keine Messdaten in Fachtabellen.
-- Das Betriebsziel bleibt P95 unter 500 ms fuer definierte Standardabfragen. Eine belastbare AWS-Baseline mit ECS/ALB/RDS ist ein separater, periodischer oder releasebezogener Staging-Nachweis und kein lokales CI-Versprechen.
-- AP-10a.5 (NAT, private Tasks, VPC-Endpoints) ist kein AP-13-Gate. Redis, materialisierte Projektionen, Read Replicas und Partitionierung werden erst nach Query-Plan- und P95-Nachweis bewertet.
-- Die Production-Alarmierung nutzt drei optionale native ALB-Alarme: TargetResponseTime P95 (Default 0,5 Sekunden), Target 5xx-Rate (Default 5 Prozent) und Target 4xx-Rate (Default 25 Prozent), jeweils ueber drei 5-Minuten-Perioden mit zwei erforderlichen Ausreissern.
-- RDS-Standardmetriken und ECS-/ALB-Standardmetriken bleiben die primaere Betriebsbeobachtung. Ein SNS-Topic ist optional; ohne Topic werden Alarme nur in CloudWatch sichtbar und verursachen keine Benachrichtigungskosten.
-- Eine realistische AWS-Staging-Baseline mit ECS/ALB/RDS bleibt ein spaeterer, kostenpflichtiger P2/P3-Nachweis und ist kein MVP- oder AP-13-Blocker.
-
-## 8. Release-Stufen (aus Lastenheft abgeleitet)
-
-1. Manueller Abruf: kontrollierter Testlauf und Datenvalidierung
-1. Taeglicher Abruf: automatische, idempotente Snapshot-Jobs
-1. Backend-API: stabile REST-Schicht
-1. Minimal-Frontend: Basis-Dashboard
-1. Frontend-Ausbau: Usability, Vergleiche, Detailansichten
-1. Features: Alerts und Prognosen
-1. Skalierung: Lasttests, Caching, horizontale Skalierung
-1. Security: DSGVO-Readiness und Security Hardening
-1. CI/CD: Build-, Test- und Deployment-Automatisierung
-
-## 9. Architekturentscheidungen
-
-- Ein eigener Comunio-REST-Adapter reduziert Integrationsrisiko und verbessert Wartbarkeit.
-- Snapshot-Modell ermoeglicht reproduzierbare Historie und robuste Delta-Berechnung.
-- Microservice-Schnitt zwischen Ingest und API verbessert Skalierbarkeit und Ausfallsicherheit.
-- Vercel fuer Frontend beschleunigt Deployment und globale Auslieferung.
-
-## 10. Konsolidierte Architektur-Entscheidungen aus Multi-Agent-Review
-
-### 10.1 Verbindliche AWS-Bausteine
-
-- Secrets Management: AWS Secrets Manager mit Rotation alle 30 bis 90 Tage.
-- Datenbank-HA: RDS PostgreSQL Multi-AZ mit automatischem Failover als Zielprofil; MVP bleibt bis zum Reliability-Gate budgetschonend.
-- Netzwerk: VPC mit Private Subnets fuer RDS und restriktiven Security Groups; der aktuelle Ingest laeuft auf ECS Fargate.
-- Task-Berechtigungen: Dedizierte ECS Task Roles pro Service mit Least-Privilege statt gemeinsam genutzter Admin-Rechte.
-- Schutzschicht: AWS WAF vor API-Einstieg inklusive Rate Limiting.
-- Audit: CloudTrail und VPC Flow Logs aktivieren.
-
-### 10.2 Skalierungsgates
-
-| Gate                | Trigger                                                            | Aktion                                                                     |
-| ------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| MVP zu Growth       | API P95 unter 500 ms fuer 7 Tage und Fehlerquote unter 0.1 Prozent | Frontend-Ausbau starten                                                    |
-| Growth zu Scale     | Snapshot-Volumen ueber 100000 pro Tag oder DAU ueber 100           | Read-Replica, erweiterte Cache-Strategie und DB-Partitionierung aktivieren |
-| Scale zu Enterprise | DAU ueber 1000 und Compliance-Checks gruen                         | Multi-Region-Option und DR-Runbook erweitern                               |
-
-Ergaenzende Security- und Cost-Gates:
-
-- Security-Gate vor jedem Deploy: Keine offenen Critical/High Findings und S1-S4 gruene Checks.
-- Cost-Gate MVP: Budget-Warnungen bei 50/80/100 Prozent fuer Dev und Staging aktiv.
-- Cost-Gate Growth: 100 Prozent Tag-Compliance (`Environment`, `Owner`, `Project`, `CostCenter`) und monatlicher Rightsizing-Review.
-
-### 10.3 Resilienzparameter
-
-- Ingest-Retry: Exponential Backoff 2s, 4s, 8s, 16s (maximal 4 Versuche).
-
-- Login-Retry (AP-9.2): fixes Intervall von 5 Minuten, maximal 3 Versuche pro Lauf; danach `run_failed` und regulaeres Prozessende.
-
-- Circuit Breaker: Open State nach 5 aufeinanderfolgenden Fehlern fuer 60 Sekunden.
-
-- Degraded Mode: API liefert im Stoerfall letzte valide Cache-Antwort mit Kennzeichnung.
-
-- Alerting-Schwellen:
-
-  - API Fehlerquote ueber 1 Prozent: Warnung.
-  - API Fehlerquote ueber 5 Prozent: kritischer Alarm.
-  - Ingest-Job ohne neue Daten im Intervall: kritischer Alarm.
-
-  ## 11. Phase-1 Baseline (Analyse und Setup, Woche 1-2)
-
-  Diese Festlegungen gelten nur fuer Phase 1 und bilden die Startbasis fuer die Umsetzung.
-
-  ### 11.1 Verbindliche P1-Entscheidungen
-
-  - Scheduler-Optionen dokumentiert, finale Auswahl in Phase 1 getroffen (EventBridge/Lambda oder CronJob).
-  - Datenbank-Hosting verbindlich festgelegt (RDS PostgreSQL als Zielbild).
-  - Secrets-Management verbindlich festgelegt (AWS Secrets Manager, keine Secrets im Repo).
-  - Netzwerk-Baseline festgelegt (VPC, private DB-Zone, restriktive Security Groups).
-  - CI/CD-Baseline definiert (Build, Lint, Tests, Artefakt-Strategie).
-
-  ### 11.2 Minimales AWS-Setup fuer Phase 1
-
-  - Account-/Umgebungsmodell: Dev, optional Staging als naechster Schritt.
-  - Monitoring-Baseline: CloudWatch Logs/Metrics, erste Alarme fuer Ingest-Fehler und API-Health.
-  - Kostenkontrolle: Budget-Warnung fuer Dev-Umgebung aktiv.
-  - IAM-Baseline: Least Privilege Rollen fuer Ingest und API festgelegt.
-  - Security-Baseline: Secrets-Manager-only in Produktion, DB-TLS-Policy und strukturierte sanitizte Logs als Pflicht.
-
-  ### 11.3 Trade-offs (nur Phase 1)
-
-  - Einfaches Setup vor Vollausbau: Fokus auf schnelle, reproduzierbare Startfaehigkeit statt Vollautomatisierung.
-  - Security-Baseline sofort, tiefe Härtung spaeter: Secrets/IAM jetzt verbindlich, erweiterte Security-Kontrollen in spaeteren Phasen.
-  - Kosten zuerst kontrollieren statt maximaler Redundanz: frueh budgetschonend planen, HA-Ausbau folgt im vorgesehenen Fahrplan.
-
-  ### 11.4 Offene Entscheidungen aus Phase 1
-
-  - Exakte Runtime fuer Ingest in Produktion (Lambda/EventBridge vs. Container/Cron).
-  - Detailtiefe der API-Perimeter-Security im fruehen Betrieb (WAF-Regelsatz initial).
-  - Zeitpunkt fuer Redis-Einsatz als Pflichtbestandteil (ab Last-/Latenz-Metriken).
-
-  ## 12. Phase-2 Fokus: AP-5 und AP-6
-
-  Dieser Abschnitt gilt nur fuer die aktuelle Umsetzung von AP-5 und AP-6.
-
-  ### 12.1 AP-5 Comunio-REST-Adapter und Login-Flow
-
-  - Ingest-Bootstrap ist als separates Backend-Modul umgesetzt.
-  - Credentials werden priorisiert aus AWS Secrets Manager geladen; lokale ENV-Werte sind nur Fallback.
-  - Login-Flow ist auf Session-Validierung begrenzt und endet bewusst vor Snapshot-Verarbeitung.
-  - Fehlerbehandlung fuer Login ist explizit vorhanden und beendet den Lauf mit Status failed.
-
-  ### 12.2 AP-6 Tabellen und Migrationen
-
-  - Schema-Migrationen sind als versionierte SQL-Dateien umgesetzt.
-  - Eine Migration-Runner-Logik fuehrt neue Migrationen einmalig aus und protokolliert sie in schema_migrations.
-  - Kern-Tabellen, Zeitreihen-Tabellen und Audit/Event-Tabellen sind getrennt in drei Migrationsschritten.
-  - Idempotenz wird im Schema durch UNIQUE-Constraints auf Snapshot-Tabellen abgesichert.
-
-  ### 12.3 Scope-Grenze dieser Umsetzung
-
-  - Nicht enthalten: automatisierter Scheduler, API-Endpunkte, Frontend-Anbindung.
-  - Diese Punkte bleiben explizit in Phase 3+.
-
-  ## 13. Phase-2 Abschluss: AP-7 und AP-8
-
-  ### 13.1 AP-7 Manueller Snapshot-Flow
-
-  - Runner-Modus `snapshot` fuehrt die Kette aus:
-    - Login
-    - Snapshot-Abruf
-    - Normalisierung
-    - DB-Persistenz
-  - Persistenz ist in einem klaren Write-Modul gekapselt.
-  - ingest_runs protokolliert jeden Lauf mit Status und Record-Zahl.
-
-  ### 13.2 AP-8 Basis-Robustheit
-
-  - Snapshot-Abruf nutzt Retry mit Exponential Backoff (2s, 4s, 8s).
-  - Fehler werden kontrolliert propagiert und als failed-Lauf markiert.
-  - Keine Scheduler-Automatisierung in Phase 2; nur manueller Trigger.
-
-  ### 13.3 Trade-offs (Phase-2 Abschluss)
-
-  - Der Live-Adapter bleibt von der Stabilitaet und dem Vertrag der Comunio-REST-API abhaengig; optionaler Datei-Input fuer lokale deterministische Tests ist vorgesehen.
-  - Fokus liegt auf Datenkonsistenz und Nachvollziehbarkeit vor Performance-Tuning.
-
-  ## 14. Konsolidierte Multi-Agent-Entscheidungen (Phase 2)
-
-  ### 14.1 Priorisierte Massnahmen
-
-  - P1: Security-Blocking Controls (Credentials-Policy, DB-TLS, Logging-Sanitization, Snapshot-Input-Haertung) verbindlich als Deploy-Gates.
-  - P2: Governance und Reliability (SLO/Fehlerbudget, Incident-Runbook, Auditierbarkeit mit Korrelation).
-  - P3: FinOps-Leitplanken (Tags, Budget-Alarme, Rightsizing-Zyklus) fuer kontrolliertes Wachstum.
-
-  ### 14.2 Trade-offs und Widerspruchsaufloesung
-
-  - Trade-off Tempo vs Sicherheit: Fruehere harte Gates verlangsamen einzelne Deploys, reduzieren aber signifikant Produktions- und Compliance-Risiko.
-  - Trade-off Debug-Tiefe vs Datenschutz: Sanitizte Standardlogs enthalten weniger Rohdetails; tiefe Diagnose bleibt nur in geschuetzten Kanaelen.
-  - Aufgeloester Widerspruch: Kostenminimum und hohe Verfuegbarkeit werden phasengerecht kombiniert (MVP budgetschonend, HA-Ausbau erst nach Gate-Triggern).
-
-  ## 15. AP-9.2 Login-Retry-Feature: konsolidierte Multi-Agent-Entscheidungen
-
-  Grundlage sind fuenf parallele Einzelbeitraege (AWS Cloud Expert, AWS Principal Architect, Principal Software Engineer, Project Architecture Planner, Software Engineer Agent) zum Feature "automatischer Login-Erfolgs-/Fehler-Check mit Retry".
-
-  ### 15.1 Priorisierte Massnahmen
-
-  - P1: Login-Retry im Ingest-Prozess selbst (3 Versuche, 5 Minuten Abstand), da dies ohne neue AWS-Ressourcen auskommt und den bestehenden Retry-Stil (Snapshot-Backoff) konsistent fortsetzt.
-  - P1: Strukturierte Log-Events (`login_attempt_failed`, `login_retry_scheduled`, `login_recovered`, `run_failed stage=login`) als Grundlage fuer den automatischen AWS-Check.
-  - P2: CloudWatch Logs Metric Filter und Alarm auf `run_failed stage=login`, damit erschoepfte Login-Retries ohne manuelles Log-Waelzen sichtbar werden.
-  - P3: Optionale SNS-Benachrichtigung ueber `alert_sns_topic_arn`; ohne Konfiguration bleibt der Alarm kostenneutral sichtbar in CloudWatch.
-
-  ### 15.2 Bewertete Alternativen und Trade-offs
-
-  - Alternative "Step Functions State Machine mit Wait/Retry zwischen mehreren Task-Starts" wurde verworfen: hoehere Betriebskomplexitaet und zusaetzliche laufende Kosten fuer ein Szenario, das intra-Prozess ohne neue Infrastruktur loesbar ist.
-  - Alternative "EventBridge-Retry-Zaehler erhoehen" wurde verworfen: EventBridge-Retries gelten nur fuer fehlgeschlagene `RunTask`-API-Aufrufe, nicht fuer anwendungsseitige Login-Fehler; eine Erhoehung haette das eigentliche Problem nicht adressiert.
-  - Trade-off Laufzeit vs Nutzerfreundlichkeit: Ein Lauf mit drei Login-Fehlversuchen kann bis zu 10 Minuten zusaetzliche Laufzeit benoetigen (2 Wartezeiten je 5 Minuten). Dies wird akzeptiert, weil Login-Probleme typischerweise transient sind (z. B. kurzzeitige API-Instabilitaet) und die Snapshot-Verarbeitung erst nach erfolgreichem Login beginnt.
-  - Kein Widerspruch zum bestehenden Snapshot-Retry (2s/4s/8s): Login-Retry und Snapshot-Retry adressieren unterschiedliche Fehlerklassen und bleiben bewusst getrennt konfigurierbar.
-
-  ### 15.3 Container-Lifecycle-Klarstellung
-
-  - Der Ingest-Task ist ein einmaliger ECS-Fargate-Task (kein ECS Service). ECS stoppt den Container beim Prozessende immer identisch, unabhaengig vom Exit-Code.
-  - Das Feature benoetigt daher keinen expliziten "Shutdown-Befehl": Exit-Code 0 (Erfolg) und Exit-Code 1 (Login-Retries erschoepft) fuehren beide zum selben ECS-Task-Stop-Verhalten.
-
-  ### 15.4 Offene Entscheidung
-
-  - Ob `alert_sns_topic_arn` bereits fuer den MVP-Betrieb verbindlich gesetzt werden muss oder das reine CloudWatch-Alarm-Signal fuer die aktuelle Betriebsphase ausreicht, ist mit dem Betriebsteam vor dem naechsten Produktions-Review zu bestaetigen.
+### Plattformentscheidungen
+
+- **Frontend und BFF:** Next.js auf Vercel. Vercel Preview-Deployments
+  unterstützen PR-Tests; deren API-Origin wird nur für das konfigurierte
+  Vercel-Projekt-/Team-Muster freigegeben.
+- **Backend und Datenpipeline:** getrennte FastAPI- und Ingest-Container auf
+  dem Linux-VPS.
+- **Persistenz:** PostgreSQL als Compose-Service mit persistentem Volume.
+- **Eingang:** Caddy ist der einzige Compose-Service mit veröffentlichten
+  HTTP(S)-Host-Ports. Er bedient HTTPS auf Port 443 sowie
+  HTTP-zu-HTTPS-Weiterleitung auf Port 80. API und Datenbank veröffentlichen
+  keine Host-Ports.
+- **AWS:** kein Standardziel für neue Arbeit. Die AWS-Dateien bleiben als
+  optionale, historische Alternative erhalten; ihr Inhalt belegt keinen
+  aktuellen Live-Zustand eines AWS-Kontos.
+
+## 2. Komponenten und Vertrauensgrenzen
+
+### 2.1 Vercel / Next.js
+
+- Rendert die Weboberfläche und stellt gleich-origin Routen unter
+  `/api/auth/*` und `/api/proxy/*` bereit.
+- Hält `API_PROXY_SECRET` serverseitig und reicht es als Bearer-Token an die
+  API weiter. Das Secret wird nicht an den Browser ausgeliefert.
+- Leitet Session-Cookies an die API weiter und setzt Auth-Cookies aus
+  API-Antworten am Browser.
+- Die Frontend-Guard-Logik prüft nur, ob ein Cookie vorhanden ist. Die API
+  validiert Signatur und Claims und ist die Autorität für den Zugriff.
+
+### 2.2 VPS-Netzwerk und Caddy
+
+- Caddy terminiert öffentliches HTTPS und leitet intern an den API-Container
+  weiter. Der API-Container hängt am internen Datenbank- und API-Ingress-Netz;
+  die Datenbank hängt nur am internen Datenbanknetz.
+- Der Ingest-Container nutzt das Datenbanknetz und ein separates
+  ausgehendes Netz für den Zugriff auf Comunio.
+- Nur Caddy publiziert Ports auf dem Host. PostgreSQL (`5432`) und Uvicorn
+  (`8000`) dürfen nicht öffentlich erreichbar sein.
+- Caddy entfernt `CloudFront-Viewer-Address` und `Forwarded`; Uvicorn vertraut
+  keinen Proxy-Headern. Die Login-Drosselung ist deshalb aktuell global statt
+  client-IP-basiert (siehe Abschnitt 6).
+
+### 2.3 FastAPI
+
+- Stellt read-only-Endpunkte unter `/api/v1` sowie Auth-Routen unter `/auth`
+  bereit. Der Ingest führt keine API-Requests aus.
+- Geschützte API- und Auth-Routen benötigen sowohl eine gültige Session als
+  auch das serverseitige Proxy-Bearer-Secret. `POST /auth/login` benötigt das
+  Proxy-Secret, aber noch keine bestehende Session.
+- `/health/live` und `/health/ready` sind für Betriebsprüfungen öffentlich;
+  Readiness prüft zusätzlich die Datenbankverbindung.
+- CORS ist auf erlaubte Origins und GET beschränkt. Mutierende Auth-Requests
+  validieren den `Origin`-Header zusätzlich; Preview-Origins werden nur für
+  das konfigurierte Vercel-Projekt-/Team-Muster akzeptiert.
+
+### 2.4 PostgreSQL
+
+- Läuft im Compose-Netz ohne veröffentlichten Host-Port und speichert
+  Stammdaten, Snapshots, Ingest-Läufe und Historie.
+- API und Ingest verwenden getrennte Datenbankrollen, URLs und
+  Client-Zertifikate. Die API-Rolle ist read-only; der Ingest erhält die für
+  Snapshots benötigten Schreibrechte.
+- Datenbankverbindungen erzwingen TLS; das VPS-API-Profil verwendet
+  `sslmode=verify-full` sowie eine eigene API-Clientidentität.
+- Das persistente Volume schützt vor Datenverlust bei Container-Neustarts,
+  ersetzt aber weder unabhängige Backups noch Restore-Tests.
+
+### 2.5 Ingest und Scheduler
+
+- Der Ingest ist ein kurzlebiger Containerjob, kein dauerhaft laufender
+  Service. Er lädt Credentials und Datenbank-Zugangsdaten aus separaten,
+  read-only eingebundenen Host-Dateien.
+- Ein systemd **User-Timer** startet den Job täglich um 06:00 UTC. Der
+  One-shot-Service lädt beide Compose-Dateien und aktiviert die `api`- und
+  `jobs`-Profile. Er verwendet einen gemeinsamen `flock`-Lock, damit Timer-
+  und unterstützte manuelle Läufe nicht parallel laufen.
+- Der Job ruft Comunio über den eigenen `ComunioPyClient` ab, validiert und
+  normalisiert Snapshots und schreibt sie idempotent in PostgreSQL.
+- Ingest-Login-Retries und Snapshot-Fetch-Retries sind getrennte
+  Fehlerbehandlungen. Der Lauf liefert seinen Exit-Code an systemd zurück.
+
+## 3. Daten- und Request-Flows
+
+### 3.1 Authentifizierung und API-Aufruf
+
+1. Der Browser sendet Login und spätere Datenanfragen an gleich-origin
+   Next.js-Routen auf Vercel; er spricht den VPS nicht direkt an.
+2. Der Next.js-Auth-Proxy leitet Login, Logout und Session-Abfragen weiter,
+   ergänzt `API_PROXY_SECRET` und reicht den `Origin`-Header durch.
+3. Die API lädt die Auth-Konfiguration aus der eingebundenen Datei,
+   authentifiziert den einzelnen Benutzer und stellt ein JWT im Cookie
+   `token` aus.
+4. Das Cookie ist `Secure`, `HttpOnly`, `SameSite=Strict`, auf `/` begrenzt
+   und hat eine Laufzeit von acht Stunden. Geschützte Anfragen benötigen
+   dieses JWT und den zusätzlichen Proxy-Bearer.
+5. Die API liest Daten mit ihrer getrennten Read-only-Rolle aus PostgreSQL
+   und gibt Antworten ohne gemeinsam genutztes Caching zurück.
+
+Das Logout löscht das Browser-Cookie. Es gibt keine serverseitige
+Token-Widerrufsliste; ein bereits kopiertes JWT bleibt bis zum Ablauf gültig.
+Eine Rotation des JWT-Secrets macht bestehende Tokens ungültig; danach muss
+die API neu gestartet werden, damit der Prozess das rotierte Secret lädt.
+
+### 3.2 Ingest
+
+1. systemd startet den Compose-Job und hält den gemeinsamen Lauf-Lock.
+2. Der Ingest authentifiziert sich bei Comunio und ruft die Quelldaten ab.
+3. Daten werden validiert und idempotent in PostgreSQL geschrieben.
+4. Erfolg oder Fehler wird über Exit-Code und strukturierte Laufereignisse
+   an systemd beziehungsweise die Job-Logs zurückgegeben.
+
+## 4. Secrets und Betriebsgrenzen
+
+- Produktionssecrets liegen in Host-Dateien außerhalb des Repositories und
+  werden nur in die jeweils benötigten Container read-only eingebunden.
+- Auth-, Proxy-, API-Datenbank- und Ingest-Zugangsdaten sind getrennt.
+  Private TLS-Schlüssel liegen ebenfalls außerhalb des Repositories.
+- Container laufen mit numerischen, nicht privilegierten UIDs/GIDs,
+  read-only Root-Dateisystemen, reduzierten Capabilities und Ressourcenlimits.
+- Die Compose- und systemd-Prüfungen in CI validieren Konfiguration und
+  Sicherheitsgrenzen; sie beweisen nicht den Live-Zustand des VPS.
+- Änderungen werden lokal in Linux-kompatibler Umgebung oder CI entwickelt
+  und geprüft. Produktionsänderungen sind ein separater, ausdrücklich
+  freizugebender Deployment-Schritt.
+
+## 5. API-Vertrag und Qualitätsziele
+
+- API-Vertrag und Datenprojektionen sind in
+  [`backend/src/api/app.py`](backend/src/api/app.py),
+  [`backend/src/api/schemas.py`](backend/src/api/schemas.py) und
+  [`data_model.md`](data_model.md) maßgeblich.
+- Vorgesehene Qualitätsziele sind unter 500 ms API-P95 für definierte
+  Standardabfragen und unter zwei Sekunden Seitenladezeit. Sie sind Ziele,
+  keine Zusicherung erreichter Produktions-SLOs.
+- PostgreSQL-Integrationstests, OpenAPI-Vertragsprüfungen und das
+  Benchmark-Skript decken Anwendung und Datenzugriff ab. Ein erfolgreicher
+  lokaler Build oder Compose-Check ersetzt keine Laufzeitmessung.
+
+## 6. Verfügbarkeit, Risiken und offene Betriebsarbeit
+
+### Bekannte Einschränkungen
+
+- API und Datenbank teilen sich einen einzelnen VPS als Ausfallbereich;
+  automatisches Host-Failover oder redundante Datenbankknoten sind nicht
+  eingerichtet. Das Projektziel von 99,9 % Verfügbarkeit ist daher weder ein
+  zugesichertes SLA noch durch die aktuelle Topologie nachgewiesen.
+- Der VPS setzt einen API-Worker und ein globales, im Prozess gespeichertes
+  Login-Limit von fünf Versuchen je fünf Minuten ein. Alle Nutzer teilen das
+  Limit; ein Neustart setzt den Zähler zurück. Die VPS-Dokumentation hält
+  dieses Verhalten als akzeptierten Übergangszustand fest. Vor mehreren
+  Workern/Replicas ist ein gemeinsamer Rate-Limiter erforderlich.
+- Ein JWT wird beim Logout nicht serverseitig widerrufen und bleibt bis zu
+  acht Stunden gültig, wenn es zuvor kopiert wurde.
+- Laut letztem dokumentiertem VPS-Check vom 2026-11-08 waren regelmäßige
+  Backups/Restore-Überwachung, Monitoring/Alerting und VPS-Speicherverschlüsselung
+  noch offene Punkte. Diese Statusangabe ist historisch und
+  muss vor einer Betriebsentscheidung im [VPS-Runbook](infra/vps/README.md)
+  erneut verifiziert werden.
+- Der erste geplante VPS-Lauf wurde am 2026-11-08 mit 600 Datensätzen
+  dokumentiert. Das Runbook hielt den Nachweis eines späteren Timerlaufs
+  ohne Compose-„orphan container“-Warnung damals noch offen.
+
+### Mindestanforderungen vor weiterem Verfügbarkeitsversprechen
+
+- Automatisierte, unabhängige Backups mit regelmäßigen Restore-Tests und
+  definierten RPO/RTO.
+- Alarmierung für fehlgeschlagene oder ausgebliebene Ingest-Läufe,
+  API-/Datenbankverfügbarkeit, Ressourcen- und Speicherknappheit sowie
+  Backupfehler.
+- Dokumentierter Wiederanlauf- und Rollbackpfad für VPS- und Datenbankausfall.
+- Wiederholte Last- und Laufzeitmessungen, bevor API-P95 oder Seitenladezeit
+  als erreichte Betriebsziele ausgewiesen werden.
+
+## 7. AWS-Alternative
+
+AWS bleibt als historische, optionale Alternative im Repository. Neue
+Features erhalten keine AWS-Ressourcen, Laufzeitpfade oder Deployments, sofern
+eine Aufgabe AWS nicht ausdrücklich verlangt.
+
+- [Historische AWS-Architektur und Projektentscheidungen](docs/architecture/aws-legacy-notes.md)
+- [AWS-Deployment- und Terraform-Dokumentation](infra/aws/README.md)
+
+Historische AWS-Dokumente sind kein Nachweis für aktive Ressourcen. Ein
+aktueller AWS-Zustand darf nur nach ausdrücklich autorisierter Live-Prüfung
+beschrieben oder geändert werden.

@@ -5,9 +5,17 @@ Dokumentationsstand: 2026-11-08
 
 ## Repository-Beschreibung
 
-Dieses Repository enthält die vollständige Comunio-Datenplattform: einen Python-Ingest für tägliche Snapshots, PostgreSQL-Migrationen und Historisierung, eine read-only FastAPI für das Vercel-Frontend, AWS-ECS/Fargate- und Terraform-Infrastruktur sowie Tests, CI/CD-, Security- und Betriebsdokumentation.
+Dieses Repository enthält die Comunio-Datenplattform: einen Python-Ingest für tägliche Snapshots, PostgreSQL-Migrationen und Historisierung, eine read-only FastAPI und ein Vercel-Frontend. Der aktuelle Backend- und Ingest-Betrieb zielt auf einen Ubuntu/Linux-VPS mit Docker Compose, Caddy und systemd. AWS-ECS/Fargate- und Terraform-Dateien bleiben als historische, optionale Alternative erhalten.
 
 Ziel dieses Projekts ist eine moderne, skalierbare Plattform zur Erfassung, Speicherung und Auswertung von Comunio-Daten.
+
+## Verbindlicher Plattform- und Entwicklungsstandard
+
+- **Standardziel für neue Features:** Ubuntu/Linux-VPS und der vorhandene Stack aus Docker Compose, FastAPI, PostgreSQL, Caddy und systemd.
+- **Frontend:** Vercel mit Next.js; der Browser spricht weiterhin nur die gleich-origin Frontend-Routen an.
+- **AWS:** `infra/aws/` und AWS-spezifische Architekturabschnitte dokumentieren einen historischen/alternativen Pfad. Sie sind kein Standardziel und werden nur geändert oder ausgerollt, wenn eine Aufgabe ausdrücklich AWS verlangt.
+- Neue Backend- und Betriebsfeatures lokal in einer Linux-kompatiblen Umgebung oder CI entwickeln und prüfen, nicht direkt auf dem Produktions-VPS.
+- Für den aktuellen Betrieb ist das [VPS-Runbook](infra/vps/README.md) maßgeblich; die [AWS-Dokumentation](infra/aws/README.md) ist nur eine Referenz für ausdrücklich angeforderte AWS-Arbeit.
 
 ## Projektziel
 
@@ -17,7 +25,7 @@ Das Projekt liefert:
 - historisierte Speicherung in PostgreSQL
 - Backend-API fuer Auswertung und Bereitstellung
 - Frontend-Dashboard auf Vercel
-- Betrieb mit Security-, Monitoring- und CI/CD-Baseline
+- VPS/Linux-Betrieb mit Security-, Monitoring- und CI/CD-Baseline
 
 ## Aktueller Stand
 
@@ -91,12 +99,12 @@ ausschließlich das [VPS-Runbook](infra/vps/README.md).
 - [data_model.md](data_model.md): fachliches und technisches Datenmodell
 - [implementierungsplan.md](implementierungsplan.md): Roadmap und Abnahmekriterien
 
-## Backend Quick Start
+## Backend Quick Start (Linux-Standard)
 
 Voraussetzungen:
 
 - Python 3.11+
-- PostgreSQL erreichbar
+- PostgreSQL erreichbar (lokale Entwicklung oder freigegebene Testdatenbank)
 
 Schritte:
 
@@ -106,11 +114,11 @@ Schritte:
 1. Migrationen ausfuehren.
 1. Login-Check oder Snapshot-Run starten.
 
-Beispielbefehle (PowerShell):
+Beispielbefehle (Bash/Linux):
 
-```powershell
-Set-Location backend
-python -m pip install -r requirements.txt
+```bash
+cd backend
+python3 -m pip install -r requirements.txt
 python -m migrations.runner
 python -m src.ingest.runner --run-type manual --mode login
 python -m src.ingest.runner --run-type manual --mode snapshot
@@ -126,7 +134,7 @@ Hinweis fuer lokale, deterministische Tests:
 - AP-5/AP-6 Runbook: [backend/OPERABILITY-AP5-AP6.md](backend/OPERABILITY-AP5-AP6.md)
 - AP-7 Runbook: [backend/OPERABILITY-AP7.md](backend/OPERABILITY-AP7.md)
 - AP-9/AP-9.2 Scheduler-Runbook (inkl. Login-Retry und Alarm): [backend/OPERABILITY-AP9.md](backend/OPERABILITY-AP9.md)
-- AWS Deployment-Baseline: [infra/aws/README.md](infra/aws/README.md)
+- Historische AWS-Alternative: [infra/aws/README.md](infra/aws/README.md)
 - Security-Review (historischer Stichtag): [docs/code-review/2026-08-25-full-project-security-review.md](docs/code-review/2026-08-25-full-project-security-review.md)
 
 Lokale Backend-Tests ohne AWS:

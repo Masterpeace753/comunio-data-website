@@ -56,7 +56,7 @@ Der VPS stellt öffentlich nur HTTPS und – falls administrativ erforderlich �
 ### P1 — Hoch: Header-Vertrauen und falsche Login-IP hinter neuem Proxy
 
 - **Kategorie:** Zero Trust / Authentifizierung / Rate-Limit-Umgehung
-- **Repository-Beleg:** [`_login_client_ip()`](../../backend/src/api/auth.py) vertraut `CloudFront-Viewer-Address` vor der Peer-Adresse. Die bisherige AWS-Konfiguration setzt CloudFront als vorgeschalteten Proxy voraus ([Architektur AP-14](../../architecture.md)); das ist keine Contabo-Konfiguration.
+- **Historischer Repository-Beleg:** [`_login_client_ip()`](../../backend/src/api/auth.py) vertraute im damaligen AWS-Pfad `CloudFront-Viewer-Address` vor der Peer-Adresse ([AWS-Altarchitektur AP-14](../architecture/aws-legacy-notes.md)). Das ist keine VPS-Konfiguration.
 - **Risiko:** Wird der Backend-Port direkt erreichbar oder ein clientgelieferter IP-Header ungeprüft akzeptiert, kann die Quell-IP gefälscht und das anwendungsseitige Login-Limit umgangen werden. Ohne korrektes Proxy-Setup können alle Anmeldungen als Proxy-IP gewertet werden.
 - **Fix/Gate:** Backend nur intern binden; in Nginx/Caddy vom Client angelieferte Forwarding- und CloudFront-Header löschen/überschreiben. `CloudFront-Viewer-Address` auf dem VPS nicht weiterreichen. Uvicorn-Proxy-Vertrauen auf die konkrete lokale Proxy-Adresse begrenzen. Backend-Logik so ändern, dass nur aus einer verifizierten Proxy-Kette eine Client-IP verwendet wird; andernfalls Peer-Adresse verwenden. Diesen Vertrauenspfad mit Spoofing-Tests nachweisen.
 - **Validierung:** Aus dem Internet sind nur die freigegebenen Ports erreichbar. Ein Testclient, der wechselnde `X-Forwarded-For`- und `CloudFront-Viewer-Address`-Werte sendet, erhält keine neuen Rate-Limit-Buckets. Proxy-IP und Quell-IP mit kontrolliertem Staging-Test verifizieren, ohne produktive Konten mit Fehlversuchen zu sperren.
@@ -72,7 +72,7 @@ Der VPS stellt öffentlich nur HTTPS und – falls administrativ erforderlich �
 ### P2 — Mittel: In-Memory-Loginlimit ist nicht dauerhaft/clusterweit
 
 - **Kategorie:** OWASP A07 / Verfügbarkeit
-- **Repository-Beleg:** [`auth.py`](../../backend/src/api/auth.py) begrenzt Login-Versuche pro IP auf fünf in fünf Minuten, hält Zähler aber pro Prozess im Speicher; [`architecture.md`](../../architecture.md) dokumentiert, dass mehrere Tasks das Limit aufweichen.
+- **Aktueller VPS-Stand:** [`compose.yaml`](../../infra/vps/compose.yaml) setzt den Prozesszähler auf einen globalen Bucket von fünf Versuchen je fünf Minuten; die aktuelle Topologie und die daraus folgende gemeinsame Login-Drosselung stehen in [`architecture.md`](../../architecture.md), Abschnitt 6. Die AWS-Client-IP-Variante ist historisch.
 - **Risiko:** Neustart setzt Zähler zurück; spätere Worker/Instanzen haben unabhängige Kontingente. Das ist kein alleiniger Schutz gegen breit verteilte Versuche.
 - **Fix/Gate:** Für den Ein-VPS-Betrieb zusätzlich ein Proxy-seitiges Login-Limit mit verbindlicher Shared-Zone und angemessenen Burst-/Antwortwerten konfigurieren; Anwendungslimit als zweite Schicht beibehalten. Request-Body-Größe und Login-Timeout begrenzen. Wenn mehrere Backend-Prozesse oder VPS eingesetzt werden, gemeinsames Rate-Limit (z. B. zentraler Zähler) als Pflicht vor Skalierung.
 - **Validierung:** Im Staging sechster Loginversuch innerhalb des Fensters erhält `429` samt `Retry-After`; Requests mit gefälschten Headern ändern die IP-Zuordnung nicht. Grenzwerte und legitime Wiederherstellung dokumentieren.

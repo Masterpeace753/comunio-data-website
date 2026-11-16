@@ -288,6 +288,14 @@ resource "aws_ecs_task_definition" "api" {
           value = var.api_allowed_origins
         },
         {
+          name  = "API_VERCEL_PREVIEW_PROJECT_SLUG"
+          value = var.api_vercel_preview_project_slug
+        },
+        {
+          name  = "API_VERCEL_PREVIEW_TEAM_SLUG"
+          value = var.api_vercel_preview_team_slug
+        },
+        {
           name  = "AUTH_SECRET_ARN"
           value = var.auth_secret_arn
         },

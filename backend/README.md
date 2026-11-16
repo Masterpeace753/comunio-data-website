@@ -1,5 +1,11 @@
 # Backend Ingest and API
 
+> **Platform default:** Develop new backend and Ingest features for Ubuntu/Linux
+> VPS using Docker Compose, FastAPI, PostgreSQL, Caddy, and systemd. The VPS
+> deployment guide at [infra/vps/README.md](../infra/vps/README.md) is the
+> operational source of truth. AWS providers remain for the historical,
+> optional alternative and should be changed only when explicitly requested.
+
 This backend implements:
 
 - AP-5: ComunioPy login flow bootstrap
@@ -29,37 +35,38 @@ Review the resulting dependency changes, run the tests and audit, and rebuild
 and scan both images. Base-image and OS package updates still depend on the
 upstream image and Debian repositories; the Python lock does not pin them.
 
-1. Copy `.env.example` to `.env` and fill values.
-1. Create database locally.
+1. Copy `.env.example` to `.env` and fill values, using local or test-only
+   credentials and database settings.
+1. Create a local development database.
 1. Run migrations:
 
-```powershell
+```sh
 python -m migrations.runner
 ```
 
 1. Test login flow bootstrap only:
 
-```powershell
+```sh
 python -m src.ingest.runner --run-type manual --mode login
 ```
 
 1. Execute AP-7 manual snapshot run:
 
-```powershell
+```sh
 python -m src.ingest.runner --run-type manual --mode snapshot
 ```
 
 1. Start the AP-11 API locally:
 
-```powershell
+```sh
 uvicorn src.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 Run the AP-13 test layers:
 
-```powershell
+```sh
 python -m pytest tests -q
-$env:TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/comunio_test?sslmode=disable"
+export TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/comunio_test?sslmode=disable"
 python -m pytest tests -m integration -q
 python scripts/benchmark_api.py
 ```
@@ -70,7 +77,12 @@ read-only routes under `/api/v1`. `/health/live` does not require a database con
 `limit` of 100. The transfer-market route returns an empty page until the ingest pipeline
 populates `transfermarket_snapshots`. Set `API_ALLOWED_ORIGINS` to a comma-separated
 allowlist containing the Vercel production origin, for example
-`https://comunio-data.vercel.app`.
+`https://comunio-data.vercel.app`. To allow Vercel branch-preview logins without
+adding every PR URL individually, set both `API_VERCEL_PREVIEW_PROJECT_SLUG`
+and `API_VERCEL_PREVIEW_TEAM_SLUG` to the project and team slug shown in the
+generated preview hostname. The API accepts only HTTPS hosts matching
+`<project>-git-<branch>-<team>.vercel.app`; other Vercel projects remain
+blocked. Leave both unset to disable preview-origin matching.
 
 `GET /api/v1/ingest/runs` returns a bounded, authenticated history of runs
 registered in `ingest_runs` and the latest available market-value
