@@ -20,6 +20,8 @@ TEST_ENV = {
     "VPS_SECRET_DIR": "/tmp/comunio-ci-secrets",
     "VPS_TLS_DIR": "/tmp/comunio-ci-tls",
     "API_ALLOWED_ORIGINS": "https://example.invalid",
+    "API_VERCEL_PREVIEW_PROJECT_SLUG": "",
+    "API_VERCEL_PREVIEW_TEAM_SLUG": "",
     "CADDY_IMAGE": "example.invalid/caddy:ci",
     "CADDY_UID": "10002",
     "CADDY_GID": "10002",
@@ -166,6 +168,8 @@ class ComposeConfigurationTests(unittest.TestCase):
         self.assertEqual(services["ingest"]["environment"]["COMUNIO_SECRET_FILE"], "/run/secrets/comunio.json")
         self.assertEqual(services["ingest"]["environment"]["DATABASE_URL_FILE"], "/run/secrets/database-url")
         self.assertEqual(services["api"]["environment"]["AUTH_SECRET_FILE"], "/run/secrets/auth.json")
+        self.assertEqual(services["api"]["environment"]["API_VERCEL_PREVIEW_PROJECT_SLUG"], "")
+        self.assertEqual(services["api"]["environment"]["API_VERCEL_PREVIEW_TEAM_SLUG"], "")
         self.assertEqual(services["api"]["environment"]["API_PROXY_SECRET_FILE"], "/run/secrets/api-proxy-secret")
         self.assertEqual(services["api"]["environment"]["LOGIN_RATE_LIMIT_SCOPE"], "global")
         self.assertIn("--no-proxy-headers", services["api"]["command"])

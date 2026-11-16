@@ -216,6 +216,18 @@ variable "api_allowed_origins" {
   default     = "http://localhost:3000,http://127.0.0.1:3000"
 }
 
+variable "api_vercel_preview_project_slug" {
+  description = "Optional Vercel project slug for narrowly allowing its branch preview origins"
+  type        = string
+  default     = ""
+}
+
+variable "api_vercel_preview_team_slug" {
+  description = "Optional Vercel team slug paired with api_vercel_preview_project_slug"
+  type        = string
+  default     = ""
+}
+
 variable "api_p95_threshold_seconds" {
   description = "ALB target response time P95 alarm threshold for the API"
   type        = number

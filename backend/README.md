@@ -70,7 +70,12 @@ read-only routes under `/api/v1`. `/health/live` does not require a database con
 `limit` of 100. The transfer-market route returns an empty page until the ingest pipeline
 populates `transfermarket_snapshots`. Set `API_ALLOWED_ORIGINS` to a comma-separated
 allowlist containing the Vercel production origin, for example
-`https://comunio-data.vercel.app`.
+`https://comunio-data.vercel.app`. To allow Vercel branch-preview logins without
+adding every PR URL individually, set both `API_VERCEL_PREVIEW_PROJECT_SLUG`
+and `API_VERCEL_PREVIEW_TEAM_SLUG` to the project and team slug shown in the
+generated preview hostname. The API accepts only HTTPS hosts matching
+`<project>-git-<branch>-<team>.vercel.app`; other Vercel projects remain
+blocked. Leave both unset to disable preview-origin matching.
 
 `GET /api/v1/ingest/runs` returns a bounded, authenticated history of runs
 registered in `ingest_runs` and the latest available market-value

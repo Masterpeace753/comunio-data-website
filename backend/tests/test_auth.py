@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -29,6 +30,7 @@ def isolated_auth(monkeypatch, request):
     if request.node.name != "test_auth_secret_is_loaded_once_and_missing_production_arn_fails_closed":
         monkeypatch.setattr(auth, "get_auth_config", lambda: config)
     monkeypatch.setattr(api_app, "allowed_origins", [ORIGIN])
+    monkeypatch.setattr(api_app, "vercel_preview_host_pattern", None)
     yield config
     auth.reset_login_rate_limit()
 
@@ -273,6 +275,69 @@ def test_mutating_requests_reject_untrusted_or_missing_origin(
 
     assert response.status_code == 403
     assert response.json()["code"] == "invalid_origin"
+
+
+def test_login_accepts_configured_vercel_branch_preview_origin(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        api_app,
+        "vercel_preview_host_pattern",
+        re.compile(r"comunio-data-git-[a-z0-9-]+-teamname\.vercel\.app", re.IGNORECASE),
+    )
+
+    response = client.post(
+        "/auth/login",
+        json=login_payload(),
+        headers={"Origin": "https://comunio-data-git-fix-login-teamname.vercel.app"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"username": USERNAME}
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://other-project-git-fix-login-teamname.vercel.app",
+        "https://comunio-data-git-fix-login-otherteam.vercel.app",
+        "https://comunio-data-git-fix-login-teamname.vercel.app.attacker.example",
+        "http://comunio-data-git-fix-login-teamname.vercel.app",
+        "https://comunio-data-git-fix-login-teamname.vercel.app/",
+        "https://user@comunio-data-git-fix-login-teamname.vercel.app",
+        "https://comunio-data-git-fix-login-teamname.vercel.app:8443",
+    ],
+)
+def test_vercel_preview_origin_requires_exact_https_project_host(
+    client: TestClient, monkeypatch, origin: str
+) -> None:
+    monkeypatch.setattr(
+        api_app,
+        "vercel_preview_host_pattern",
+        re.compile(r"comunio-data-git-[a-z0-9-]+-teamname\.vercel\.app", re.IGNORECASE),
+    )
+
+    response = client.post("/auth/login", json=login_payload(), headers={"Origin": origin})
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "invalid_origin"
+
+
+def test_vercel_preview_host_pattern_requires_both_valid_slugs(monkeypatch) -> None:
+    monkeypatch.setenv("API_VERCEL_PREVIEW_PROJECT_SLUG", "comunio-data")
+    monkeypatch.delenv("API_VERCEL_PREVIEW_TEAM_SLUG", raising=False)
+    with pytest.raises(RuntimeError, match="Configure both"):
+        api_app._load_vercel_preview_host_pattern()
+
+    monkeypatch.setenv("API_VERCEL_PREVIEW_TEAM_SLUG", "teamname")
+    pattern = api_app._load_vercel_preview_host_pattern()
+    assert pattern is not None
+    assert pattern.fullmatch("comunio-data-git-fix-login-teamname.vercel.app")
+    assert not pattern.fullmatch("other-project-git-fix-login-teamname.vercel.app")
+
+    monkeypatch.setenv("API_VERCEL_PREVIEW_PROJECT_SLUG", "bad/project")
+    with pytest.raises(RuntimeError, match="valid URL slugs"):
+        api_app._load_vercel_preview_host_pattern()
 
 
 def test_logout_clears_cookie_with_secure_flags(client: TestClient) -> None:

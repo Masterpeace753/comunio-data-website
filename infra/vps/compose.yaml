@@ -253,6 +253,8 @@ services:
     environment:
       APP_ENV: production
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-}
+      API_VERCEL_PREVIEW_PROJECT_SLUG: ${API_VERCEL_PREVIEW_PROJECT_SLUG:-}
+      API_VERCEL_PREVIEW_TEAM_SLUG: ${API_VERCEL_PREVIEW_TEAM_SLUG:-}
       LOGIN_RATE_LIMIT_SCOPE: global
       AUTH_SECRET_FILE: /run/secrets/auth.json
       API_PROXY_SECRET_FILE: /run/secrets/api-proxy-secret

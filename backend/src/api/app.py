@@ -4,7 +4,9 @@ from datetime import date
 from enum import StrEnum
 import hmac
 import os
+import re
 from typing import Annotated, TypeVar
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,6 +79,54 @@ allowed_origins = [
     for origin in os.getenv("API_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
     if origin.strip()
 ]
+
+
+def _load_vercel_preview_host_pattern() -> re.Pattern[str] | None:
+    project_slug = os.getenv("API_VERCEL_PREVIEW_PROJECT_SLUG", "").strip().lower()
+    team_slug = os.getenv("API_VERCEL_PREVIEW_TEAM_SLUG", "").strip().lower()
+    if not project_slug and not team_slug:
+        return None
+    if not project_slug or not team_slug:
+        raise RuntimeError(
+            "Configure both API_VERCEL_PREVIEW_PROJECT_SLUG and API_VERCEL_PREVIEW_TEAM_SLUG"
+        )
+
+    slug_pattern = r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+    if not re.fullmatch(slug_pattern, project_slug) or not re.fullmatch(slug_pattern, team_slug):
+        raise RuntimeError("Vercel preview project and team slugs must be valid URL slugs")
+
+    return re.compile(
+        rf"{re.escape(project_slug)}-git-[a-z0-9-]+-{re.escape(team_slug)}\.vercel\.app",
+        re.IGNORECASE,
+    )
+
+
+vercel_preview_host_pattern = _load_vercel_preview_host_pattern()
+
+
+def _is_allowed_origin(origin: str) -> bool:
+    if origin in allowed_origins:
+        return True
+    if vercel_preview_host_pattern is None:
+        return False
+
+    try:
+        parsed_origin = urlsplit(origin)
+        hostname = parsed_origin.hostname
+    except ValueError:
+        return False
+
+    return bool(
+        parsed_origin.scheme == "https"
+        and hostname
+        and parsed_origin.netloc.casefold() == hostname.casefold()
+        and not parsed_origin.path
+        and not parsed_origin.query
+        and not parsed_origin.fragment
+        and vercel_preview_host_pattern.fullmatch(hostname)
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -103,7 +153,7 @@ def _safe_ingest_enum(enum_type: type[IngestEnum], value: object, unknown: Inges
 async def require_api_proxy_authentication(request: Request, call_next):
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         origin = request.headers.get("Origin")
-        if not origin or origin not in allowed_origins:
+        if not origin or not _is_allowed_origin(origin):
             return _private_cache_headers(request, JSONResponse(
                 status_code=403,
                 content={"code": "invalid_origin", "message": "Request origin is not allowed."},
