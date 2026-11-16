@@ -42,6 +42,13 @@ checks returned 200 for liveness and readiness; an unauthenticated request to
 the Ingest history route returned 401. The updated Ingest has not yet
 completed a production run.
 
+On 2026-11-16, backend commit `f9e113e` was deployed: migration
+`005_player_club.sql` was applied, the API was restarted, and the Ingest image
+was updated for the next scheduled run. Public liveness and readiness returned
+200, unauthenticated player access returned 401, and player list/detail database
+queries succeeded. No manual snapshot was started; club names and corrected
+Comunio team assignments require the next successful live snapshot.
+
 The frontend detail-page fix was deployed and the operator verified team and
 player details and player history; corresponding VPS API requests returned
 200. AWS rollback resources remain. The operator has reported that the AWS
