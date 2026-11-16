@@ -14,6 +14,8 @@ Set `NEXT_PUBLIC_API_BASE_URL` to the FastAPI base URL. The browser only calls t
 
 The current stack uses Next.js 16.4.5, React 19, Tailwind CSS, Recharts 3, Vitest 5 and ESLint 9. ESLint 9.39.5 is no longer supported; the operator accepted a temporary, version-specific CI exception because the Next.js lint plugins do not yet support ESLint 10. Replace the exception once a compatible lint stack is available. The API proxy runs as a Vercel Function. Vercel Hobby currently includes 1 million function invocations per month, 4 active CPU hours and 360 GB-hours of provisioned memory, but is intended for personal, non-commercial use. The API proxy applies an 8-second upstream timeout and forwards only `GET` requests. The FastAPI must enforce `API_PROXY_SECRET`; forwarding a secret alone is not an access-control boundary.
 
+The player list searches the complete API dataset and displays 25 results per page. Search and page offset are reflected in the URL, so pagination and browser history retain the active search.
+
 ## Data mode and ingest history
 
 The clickable **Datenmodus** panel opens the `/datenmodus` page with a read-only history of ingest runs

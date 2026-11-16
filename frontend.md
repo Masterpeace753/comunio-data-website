@@ -136,9 +136,10 @@ Ziel: schneller Ueberblick, angelehnt an das Referenzdesign (KPI-Kacheln oben, z
 
 - Datenquelle: `GET /api/v1/players` (`limit`, `offset`, `team_id`, `position`, `search`).
 - UI: Tabelle mit Spalten Name (Link zum Spielerdetail), Position (`Badge`), Club (Bundesligaverein), Team (Comunio-Besitzer), aktueller Marktwert (`current_value_eur`, formatiert als EUR). Fehlende Zuordnungen werden als "-" angezeigt.
-- Filterleiste oberhalb der Tabelle: Textsuche (`search`), Team-Dropdown (`team_id`, gespeist aus `GET /api/v1/teams`), Position-Dropdown (`position` enum `TW/ABW/MITT/ST`).
-- Pagination: Standard `limit=25`, Seitensteuerung ueber `offset`; Gesamtzahl aus `total` anzeigen ("Zeige 1-25 von 412").
-- Mehrfachauswahl (Checkbox je Zeile, max. 5) fuer "Zum Vergleich hinzufuegen" -> fuehrt zu einer Vergleichsansicht (Modal oder eigene Route `/spieler/vergleich?ids=...`), die mehrere `GET /api/v1/players/{id}/history`-Aufrufe parallel in einem gemeinsamen Line-Chart darstellt (mehrere Farben aus der Akzentpalette + abgeleiteten Tonwerten).
+- Umgesetzt: Textsuche (`search`) ueber den gesamten Spielerbestand. Eine neue Suche beginnt auf der ersten Seite; "Filter zuruecksetzen" entfernt Suche und Seitenversatz.
+- Umgesetzt: Pagination mit `limit=25` und `offset`; die gefilterte Gesamtzahl kommt aus `total` ("Zeige 1-25 von 412"). Vor und zurueck behalten den Suchbegriff. `search` und `offset` stehen in der URL, sodass Links und Browser-Verlauf Suche und Seite wiederherstellen.
+- Geplant: Team-Dropdown (`team_id`, gespeist aus `GET /api/v1/teams`) und Position-Dropdown (`position` enum `TW/ABW/MITT/ST`).
+- Geplant: Mehrfachauswahl (Checkbox je Zeile, max. 5) fuer "Zum Vergleich hinzufuegen" -> fuehrt zu einer Vergleichsansicht (Modal oder eigene Route `/spieler/vergleich?ids=...`), die mehrere `GET /api/v1/players/{id}/history`-Aufrufe parallel in einem gemeinsamen Line-Chart darstellt (mehrere Farben aus der Akzentpalette + abgeleiteten Tonwerten).
 
 ### 4.3 Spielerdetail (`/spieler/[id]`)
 
@@ -206,12 +207,13 @@ Regeln:
 
 ### 6.3 Daten-Fetching-Strategie
 
-- Server Components (App Router) fuer den initialen Render von Listenseiten (`/spieler`, `/teams`, `/transfermarkt`) mit den in der URL enthaltenen Filter-/Pagination-Query-Params -> schnelles First Paint, SEO-faehig, kein Client-Loading-Spinner beim ersten Laden.
-- Client Components + TanStack Query fuer:
+- Aktueller Stand fuer `/spieler`: Eine Client Component liest `search` und `offset` aus der URL und laedt die jeweilige Seite ueber den Same-Origin-Proxy. Waehrend des Abrufs wird ein Ladezustand angezeigt; ueberholte Antworten werden verworfen. TanStack Query wird dafuer nicht verwendet.
+- Ziel fuer einen spaeteren Ausbau: Server Components fuer den initialen Render von Listenseiten mit den in der URL enthaltenen Filter-/Pagination-Query-Params -> schnelles First Paint, SEO-faehig, kein Client-Loading-Spinner beim ersten Laden.
+- Geplante Client Components + TanStack Query fuer:
   - interaktive Nachfilterungen ohne vollen Seiten-Reload,
   - Spielerdetail-Charts mit Zeitraum-Umschalter (mehrere `history`-Requests je nach gewaehltem Zeitraum),
   - Vergleichsansicht mit parallelen Requests.
-- Kein globales State-Management (Redux etc.) noetig; URL-Suchparameter sind die "Single Source of Truth" fuer Filter-/Pagination-Zustand (teilbare/bookmarkbare Links), TanStack Query cached die zugehoerigen Responses.
+- Kein globales State-Management (Redux etc.) noetig; bei `/spieler` sind URL-Suchparameter die "Single Source of Truth" fuer die abgesendete Suche und den Seitenversatz. Ein TanStack-Query-Cache ist ein moeglicher spaeterer Ausbau.
 
 ## 7. Projektstruktur (Next.js App Router)
 
