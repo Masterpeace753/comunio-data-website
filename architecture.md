@@ -8,9 +8,11 @@
 >
 > Dokumentationsstand: 2026-11-16.
 > Dieses Dokument beschreibt die aktuelle Soll-/Code-Architektur. Der letzte
-> im Repository dokumentierte Live-Check stammt vom 2026-11-08; diese
-> Aktualisierung prüft keine laufenden Produktionsdienste. Für Betriebsstatus
-> und Deploymentdetails ist das [VPS-Runbook](infra/vps/README.md) maßgeblich.
+> vollständige Deployment-Check stammt vom 2026-11-08. Eine gezielte,
+> read-only Importdiagnose vom 2026-11-16 ist im
+> [VPS-Runbook](infra/vps/README.md) dokumentiert. Die hier beschriebene
+> Pagination-Korrektur ist noch nicht deployed; andere Produktionsdienste
+> wurden bei dieser Diagnose nicht geprüft.
 > Historische AWS-Entscheidungen stehen in den
 > [AWS-Altarchitektur-Notizen](docs/architecture/aws-legacy-notes.md).
 
@@ -115,6 +117,11 @@ flowchart LR
   und unterstützte manuelle Läufe nicht parallel laufen.
 - Der Job ruft Comunio über den eigenen `ComunioPyClient` ab, validiert und
   normalisiert Snapshots und schreibt sie idempotent in PostgreSQL.
+- Der Spielerabruf verwendet `limit` und den von Comunio erwarteten Parameter
+  `start`. `offset` lieferte im Live-Test wiederholt dieselbe erste Seite.
+  Spieler-IDs werden über Seiten dedupliziert; eine weitere Seite ohne neue
+  IDs lässt den Snapshot fehlschlagen statt unvollständige Daten als Erfolg
+  zu speichern.
 - Ingest-Login-Retries und Snapshot-Fetch-Retries sind getrennte
   Fehlerbehandlungen. Der Lauf liefert seinen Exit-Code an systemd zurück.
 
@@ -143,9 +150,12 @@ die API neu gestartet werden, damit der Prozess das rotierte Secret lädt.
 ### 3.2 Ingest
 
 1. systemd startet den Compose-Job und hält den gemeinsamen Lauf-Lock.
-2. Der Ingest authentifiziert sich bei Comunio und ruft die Quelldaten ab.
-3. Daten werden validiert und idempotent in PostgreSQL geschrieben.
-4. Erfolg oder Fehler wird über Exit-Code und strukturierte Laufereignisse
+2. Der Ingest authentifiziert sich bei Comunio und lädt die Spielerseiten mit
+   `limit`/`start` bis zur gemeldeten Trefferzahl.
+3. Doppelte Spieler-IDs werden zusammengeführt; eine Seite ohne neue IDs wird
+   als Abruffehler behandelt.
+4. Daten werden validiert und idempotent in PostgreSQL geschrieben.
+5. Erfolg oder Fehler wird über Exit-Code und strukturierte Laufereignisse
    an systemd beziehungsweise die Job-Logs zurückgegeben.
 
 ### 3.3 Spielersuche und Seitennavigation

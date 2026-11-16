@@ -104,6 +104,9 @@ history route was rejected as expected.
   `005_player_club.sql` before deploying the updated API and ingest. Club names
   and corrected owner assignments become available after the next successful
   live snapshot; previously stored team assignments may be incorrect until then.
+- Live player ingestion paginates Comunio's player endpoint with `start` and
+  `limit`. Repeated pages without new player IDs fail the snapshot instead of
+  reporting a successful but incomplete import.
 - For deterministic local tests you can set `COMUNIO_SNAPSHOT_FILE` to a JSON file
   containing `teams`, `players`, and `market_values` arrays.
 - Secret providers support the existing AWS settings and optional mounted files:

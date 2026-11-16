@@ -46,8 +46,20 @@ On 2026-11-16, backend commit `f9e113e` was deployed: migration
 `005_player_club.sql` was applied, the API was restarted, and the Ingest image
 was updated for the next scheduled run. Public liveness and readiness returned
 200, unauthenticated player access returned 401, and player list/detail database
-queries succeeded. No manual snapshot was started; club names and corrected
-Comunio team assignments require the next successful live snapshot.
+queries succeeded. No snapshot had yet run after the rollout at that time.
+The later successful run and its incomplete player set are described below;
+the full player set and corrected assignments still require a successful run
+after the pagination fix is deployed.
+
+A read-only import diagnosis on 2026-11-16 found 128 player rows in the
+database, of which 100 had been seen in the prior two days; the latest market
+value snapshot also contained 100 unique players. The latest successful run
+reported 600 market-value writes. Comunio reported 539 player hits, but
+requests using `offset=0`, `100`, and `200` returned the same first 100 player
+IDs. A request using `start=100` returned a different page. This identifies
+the source pagination parameter as the cause of the incomplete import; the
+local code now uses `start` and detects repeated pages. That correction has
+not yet been deployed or verified across all pages in production.
 
 The frontend detail-page fix was deployed and the operator verified team and
 player details and player history; corresponding VPS API requests returned

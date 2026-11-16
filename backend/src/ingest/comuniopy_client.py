@@ -208,26 +208,36 @@ class ComunioPyClient:
         if self._session is None or not self._community_id:
             raise ComunioSnapshotError("Not logged in; call login() first")
 
-        all_players: list[dict[str, Any]] = []
-        offset = 0
+        all_players: dict[int, dict[str, Any]] = {}
+        fetched_count = 0
+        start = 0
         while True:
             r = self._session.get(
                 f"{_API_BASE}/communities/{self._community_id}/players",
-                params={"limit": _PAGE_SIZE, "offset": offset},
+                params={"limit": _PAGE_SIZE, "start": start},
                 timeout=30,
             )
             if r.status_code != 200:
                 raise ComunioSnapshotError(f"Failed to fetch players ({r.status_code}): {r.text[:200]}")
             data = r.json()
             batch: list[dict[str, Any]] = data.get("tradables", [])
-            all_players.extend(batch)
-            if len(all_players) >= data.get("totalHits", 0) or not batch:
+            if not batch:
                 break
-            offset += _PAGE_SIZE
+            page_ids = {int(player["id"]) for player in batch if player.get("id") is not None}
+            if page_ids and page_ids.issubset(all_players):
+                raise ComunioSnapshotError("Player pagination returned a page without new players")
+            for player in batch:
+                player_id = player.get("id")
+                if player_id is not None:
+                    all_players[int(player_id)] = player
+            fetched_count += len(batch)
+            if fetched_count >= data.get("totalHits", 0):
+                break
+            start += len(batch)
 
         # Derive teams (community members) from player owner field.
         teams_seen: dict[int, dict[str, Any]] = {}
-        for p in all_players:
+        for p in all_players.values():
             owner = p.get("owner")
             if owner and owner.get("id") not in teams_seen:
                 teams_seen[int(owner["id"])] = {
@@ -239,7 +249,7 @@ class ComunioPyClient:
 
         players_out: list[dict[str, Any]] = []
         market_values_out: list[dict[str, Any]] = []
-        for p in all_players:
+        for p in all_players.values():
             pid = p.get("id")
             name = p.get("name")
             position = p.get("position")

@@ -8,7 +8,7 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 
 ## Begründung
 
-- **Stabilität:** Der Adapter kontrolliert Login, Timeouts, Pagination und Fehlerbehandlung selbst.
+- **Stabilität:** Der Adapter kontrolliert Login, Timeouts und Fehlerbehandlung selbst. Der Spielerabruf nutzt `limit`/`start`, fasst doppelte IDs zusammen und bricht bei Seiten ohne neue Spieler ab.
 - **Funktionsumfang:** Breitere Abdeckung (Teams, Spieler, Marktwerte, Transfermarkt).
 - **Wartbarkeit:** Die Schnittstelle ist im Projektcode sichtbar und testbar.
 - **Datenqualität:** Normalisierung und Positionsmapping werden zentral im Adapter umgesetzt.
@@ -45,11 +45,11 @@ Legacy-Paket `comuniopy` ist keine Abhängigkeit des Projekts.
 ## Architektur (Kurzüberblick)
 
 - **Ingest:** Python + eigener ComunioPyClient
-- **DB:** PostgreSQL (optional TimescaleDB)
+- **DB:** PostgreSQL auf dem Ubuntu/Linux-VPS
 - **Backend:** FastAPI
-- **Frontend:** React auf Vercel
-- **Automatisierung:** EventBridge → ECS Fargate
-- **Monitoring:** CloudWatch Logs sowie native ALB-Metriken fuer API-P95 und Fehlerquoten
+- **Frontend:** Next.js auf Vercel
+- **Automatisierung:** systemd User-Timer → Docker-Compose-Ingestjob
+- **Monitoring:** systemd-Journal und Containerlogs; Details siehe `infra/vps/README.md`
 
 ## Update-Frequenz
 
