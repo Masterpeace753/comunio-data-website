@@ -62,11 +62,11 @@ Metadaten zu jedem Ingest-Lauf.
 | Feld             | Typ         | Constraint         | Beschreibung                              |
 | ---------------- | ----------- | ------------------ | ----------------------------------------- |
 | id               | BIGSERIAL   | PK                 | Lauf-ID                                   |
-| run_type         | TEXT        | NOT NULL           | manual oder scheduled (EventBridge)       |
+| run_type         | TEXT        | NOT NULL           | manual oder scheduled (systemd User-Timer) |
 | status           | TEXT        | NOT NULL           | started, success, failed                  |
 | started_at       | TIMESTAMPTZ | NOT NULL           | Startzeitpunkt                            |
 | finished_at      | TIMESTAMPTZ | NULL               | Endzeitpunkt                              |
-| records_written  | INTEGER     | NOT NULL DEFAULT 0 | Anzahl Datensaetze                        |
+| records_written  | INTEGER     | NOT NULL DEFAULT 0 | Marktwert-Eintraege des Laufs, inkl. Updates |
 | error_message    | TEXT        | NULL               | Fehlertext                                |
 | error_code       | TEXT        | NULL               | Sanitizter Fehlercode statt Roh-Exception |
 | correlation_id   | TEXT        | NULL               | Korrelation fuer Run/Logs/Audit           |
@@ -75,9 +75,10 @@ Metadaten zu jedem Ingest-Lauf.
 
 AP-9-Regeln fuer `ingest_runs`:
 
-- Ein EventBridge-Lauf wird mit `run_type=scheduled` gekennzeichnet; manuelle Recovery-Laeufe bleiben `manual`.
+- Ein systemd-Timer-Lauf wird mit `run_type=scheduled` gekennzeichnet; manuelle Recovery-Laeufe bleiben `manual`.
 - Jeder Lauf wird unabhaengig protokolliert. Wiederholungen duerfen den fachlichen Snapshot nicht duplizieren, weil die bestehenden UNIQUE-Constraints auf den Snapshot-Tabellen unveraendert gelten.
-- Scheduler- und DLQ-Metadaten werden in EventBridge, ECS und CloudWatch auditiert und nicht als neue fachliche Tabellen modelliert.
+- `records_written` zaehlt die in einem Lauf upserteten Marktwert-Eintraege, nicht nur neu angelegte Datenbankzeilen oder eindeutige Spieler.
+- Scheduler-, Lock- und Jobdetails werden ueber systemd und die Containerlogs auditiert, nicht als fachliche Tabellen modelliert.
 
 ### 3.4 market_values
 
