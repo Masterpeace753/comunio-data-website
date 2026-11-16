@@ -49,6 +49,7 @@ Spieler-Stammdaten inkl. aktueller Teamzuordnung.
 | name              | TEXT        | NOT NULL                                            | Spielername           |
 | position          | TEXT        | NOT NULL CHECK position IN ('TW','ABW','MITT','ST') | Position              |
 | team_id           | BIGINT      | FK teams(id)                                        | Aktuelles Team        |
+| total_points      | INTEGER     | NULL                                                | Comunio-Gesamtpunkte  |
 | source            | TEXT        | NOT NULL DEFAULT 'comuniopy'                        | Datenherkunft         |
 | first_seen_at     | TIMESTAMPTZ | NOT NULL DEFAULT now()                              | Erstsichtung          |
 | last_seen_at      | TIMESTAMPTZ | NOT NULL DEFAULT now()                              | Letzte Sichtung       |
@@ -115,6 +116,14 @@ Punkte je Spieler und Spieltag.
 Eindeutigkeit:
 
 - UNIQUE (player_id, season, matchday)
+
+Der Live-Ingest ordnet numerische `lastPoints` dem letzten abgeschlossenen Spieltag des hinterlegten, vom Nutzer gelieferten Kalenders 2026/27 zu. Laut Nutzer stehen die Punkte am Folgetag fest. Das Erfassungsfenster beginnt am UTC-Tag nach dem angegebenen Enddatum und endet normalerweise vor dem UTC-Startdatum des naechsten Spieltags. Zur konservativen Behandlung der deutschen Ortszeit werden Abrufe, die 22:00 UTC erreichen oder eine UTC-Datumsgrenze ueberschreiten, nicht zugeordnet. Nach Spieltag 34 endet das Fenster sieben Tage nach dessen Enddatum. Fixture-Snapshots erzeugen keine Spieltagspunkte.
+
+Bei Spieltag 16 und 24 beginnt der naechste Spieltag bereits am Folgetag. Laut Nutzer liegen die fertigen Punkte beim regulaeren Abruf um 06:00 UTC vor und der neue Spieltag beginnt erst abends. Deshalb werden hier nur geplante Abrufe zugeordnet, deren Abrufbeginn und Abschluss beide zwischen 06:00 und vor 07:00 UTC liegen; manuelle oder verspaetete Laeufe an diesen Tagen werden nicht zugeordnet. Wird dieses Fenster verpasst, bleibt der Wert unbekannt.
+
+Die Zuordnung ist eine Naeherung: Comunio liefert mit `lastPoints` keine Spieltagsnummer; spielfreie Spieler und Nachholspiele sind nicht vollstaendig verifiziert. Laufende Spieltage werden nicht erfasst. Ausgefallene Laeufe, fehlende Spieler und `null` ergeben ebenfalls unbekannte Werte, niemals automatisch `0`; ein spaeterer `null` loescht keinen bereits gespeicherten Wert. Wiederholte numerische Werte innerhalb des Fensters aktualisieren den Eintrag, sofern sie nicht aelter sind.
+
+`GET /api/v1/players/{id}/points` liefert `player_id`, `season` und `items` mit `matchday` und nullable `points` fuer alle nach Kalender abgeschlossenen Spieltage. Nicht erfasste Spieltage sind `null`; historische Spieltage werden nicht nachtraeglich aus Gesamtpunkten berechnet. Der [Kalender](backend/src/matchdays.py) muss bei Terminverschiebungen und vor einer neuen Saison im Code aktualisiert werden; ohne Erweiterung wird keine andere Saison erfasst.
 
 ### 3.6 transfermarket_snapshots
 

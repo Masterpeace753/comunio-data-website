@@ -231,6 +231,15 @@ deployment:
    transaction mode was set read-only. Verify permission-denied writes with
    the default transaction mode explicitly overridden; the role setting
    alone is not a security boundary.
+
+   For player points, apply the normal migrations including
+   `006_player_total_points.sql` before deploying the updated API and Ingest
+   images; deploy the API before the frontend that calls the new points
+   endpoint. The existing `player_points` table also needs Ingest write and
+   API read permissions. The daily timer can capture matchday points only
+   within the calendar windows documented in [data_model.md](../../data_model.md);
+   missed windows cannot be backfilled from `lastPoints`. Update that calendar
+   for schedule changes and before a new season.
 9. Create host directories and files with an approved owner/mode plan:
    - each Ingest-readable file is owned by `root` and the numeric
      `APP_GID`, mode `0440`; the Ingest process runs with that primary GID;
@@ -258,6 +267,78 @@ deployment:
     checked; the frontend detail-page fix has been deployed and accepted.
     Automated monitoring and manual checks are both deferred by operator
     decision; this leaves failures and gaps potentially unnoticed.
+
+## Player points upgrade (only after deployment approval)
+
+This procedure describes the prepared code, not a completed deployment.
+Before starting, review the CI results and image vulnerability reports, approve
+the residual risks, take a protected database backup and verify a restore
+using an isolated copy. Build and approve immutable API and Ingest image
+references from the same reviewed revision; the new files, including
+`006_player_total_points.sql` and `src/matchdays.py`, must be in those images.
+Verify that the Ingest role owns `players` and can write `player_points`, and
+that the API role can read both tables. Stop if these prerequisites are not
+met; do not broaden the API role's privileges.
+
+Hold the same user-runtime lock as the scheduled service throughout migration
+and the API/Ingest image switch. From an interactive deployment shell, acquire
+it with the following commands; if `flock` fails, stop rather than continuing:
+
+```sh
+exec 9>"${XDG_RUNTIME_DIR:?}/comunio-ingest.lock"
+flock -n -E 75 9
+```
+
+With the lock held and the existing database healthy, use the approved **new
+Ingest image** for the migration without starting another Ingest or changing
+the currently configured image reference. Substitute the approved image
+reference, not a secret:
+
+```sh
+INGEST_IMAGE="<approved-immutable-ingest-image>" \
+docker compose --env-file "$HOME/.config/comunio-vps.env" \
+  --project-directory "$HOME/comunio/infra/vps" \
+  -f "$HOME/comunio/infra/vps/compose.yaml" \
+  -f "$HOME/comunio/infra/vps/compose.https.yaml" \
+  --profile api --profile jobs run --rm --no-deps ingest \
+  python -m migrations.runner
+```
+
+Stop on any error and verify that `006_player_total_points.sql` is recorded in
+`schema_migrations` and `players.total_points` exists before proceeding.
+Migration 006 is additive; existing player rows initially have unknown total
+points. Retain the previous approved image references for rollback.
+
+Update the non-secret `INGEST_IMAGE` and `API_IMAGE` references in the VPS
+environment file to the approved images, validate the combined Compose
+configuration, and recreate only the API service with the new API image:
+
+```sh
+docker compose --env-file "$HOME/.config/comunio-vps.env" \
+  --project-directory "$HOME/comunio/infra/vps" \
+  -f "$HOME/comunio/infra/vps/compose.yaml" \
+  -f "$HOME/comunio/infra/vps/compose.https.yaml" \
+  --profile api --profile jobs config --quiet
+docker compose --env-file "$HOME/.config/comunio-vps.env" \
+  --project-directory "$HOME/comunio/infra/vps" \
+  -f "$HOME/comunio/infra/vps/compose.yaml" \
+  -f "$HOME/comunio/infra/vps/compose.https.yaml" \
+  --profile api --profile jobs up -d --no-deps api
+```
+
+Only continue after each command succeeds. Verify health/readiness, that the
+points endpoint rejects unauthenticated access, and that authenticated player
+list, detail, and points requests work through the existing proxy. Release the
+lock with `flock -u 9` and `exec 9>&-` once the image switch is complete.
+Deploy the matching frontend only after the API checks pass, then check the
+dashboard and player pages. The next successful live snapshot populates total
+points; earlier missing matchdays cannot be reconstructed. Inspect the next
+scheduled run and its data when operationally possible.
+
+On failure, stop the rollout, keep the frontend on its previous version, and
+use the previous approved image references and existing rollback procedure.
+Do not drop the new column or restore a database backup without a separately
+reviewed recovery decision; a restore can discard newer data.
 
 ## Initial database and Compose procedure
 
@@ -360,7 +441,7 @@ started API and proxy containers as part of the project. The `run --rm ingest`
 command starts only the Ingest service and its dependencies; enabling the
 `api` profile here does not restart the API or proxy.
 
-`snapshot_job.py` uses `date.today()` for `market_values.snapshot_date`. The
+`snapshot_job.py` uses `datetime.now(UTC).date()` for `market_values.snapshot_date`. The
 Ingest container explicitly sets `TZ=UTC`, and PostgreSQL session/log timezones
 are also UTC. Thus the snapshot key does not depend on the VPS host timezone or
 daylight-saving changes. The date is nevertheless the UTC date **when the

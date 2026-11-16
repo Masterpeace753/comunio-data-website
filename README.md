@@ -44,6 +44,14 @@ VPS-Speicherverschlüsselung sind weiterhin offene Betriebsaufgaben. Details:
 [Migrationsplan](docs/migration/00-gesamtplan.md) und
 [VPS-Validierungsbericht](infra/vps/validation-report-2026-11-07.md).
 
+**Aktueller Code-Stand:** Das Dashboard zeigt Datenbank-Neuzugänge, die
+Spielerübersicht Gesamtpunkte und das Spielerprofil die erfassten
+Spieltagspunkte 2026/27. Fehlende Spieltagspunkte bleiben unbekannt; die
+Erfassung ist kalenderbasiert und unvollständig. Einzelheiten und
+Einschränkungen stehen im [Datenmodell](data_model.md#35-player_points).
+Dies bestätigt kein Deployment; die Migrations- und Deployment-Reihenfolge
+steht im [VPS-Runbook](infra/vps/README.md).
+
 **Datenladeverlauf (08.11.2026):** Commit `4c863bf` ist auf dem VPS
 ausgerollt; Migration 004 ist angewendet. Die neue API ist über HTTPS
 erreichbar und bereit für Datenbankzugriffe. Der Verlauf-Endpunkt weist

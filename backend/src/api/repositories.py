@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
@@ -47,12 +48,21 @@ def list_ingest_runs(connection: PgConnection, limit: int, offset: int) -> tuple
     return rows, total, current_data_date[0] if current_data_date else None
 
 
-def list_players(connection: PgConnection, limit: int, offset: int, team_id: int | None, position: str | None, search: str | None) -> tuple[list[tuple], int]:
+def list_players(
+    connection: PgConnection,
+    limit: int,
+    offset: int,
+    team_id: int | None,
+    position: str | None,
+    search: str | None,
+    sort: Literal["name", "newest"] = "name",
+) -> tuple[list[tuple], int]:
     filters = "WHERE (%s IS NULL OR p.team_id = %s) AND (%s IS NULL OR p.position = %s) AND (%s IS NULL OR p.name ILIKE %s)"
     filter_parameters = (team_id, team_id, position, position, f"%{search}%" if search else None, f"%{search}%" if search else None)
+    ordering = "p.first_seen_at DESC, p.id DESC" if sort == "newest" else "p.name ASC, p.id ASC"
     query = f"""
         SELECT p.id, p.comunio_player_id, p.name, p.position, p.team_id, t.name,
-               mv.value_eur, p.club_name
+               mv.value_eur, p.club_name, p.total_points
         FROM players AS p
         LEFT JOIN teams AS t ON t.id = p.team_id
         LEFT JOIN LATERAL (
@@ -60,7 +70,7 @@ def list_players(connection: PgConnection, limit: int, offset: int, team_id: int
             WHERE player_id = p.id ORDER BY snapshot_date DESC LIMIT 1
         ) AS mv ON TRUE
         {filters}
-        ORDER BY p.name ASC, p.id ASC
+        ORDER BY {ordering}
         LIMIT %s OFFSET %s
     """
     count_query = f"SELECT COUNT(*) FROM players AS p {filters}"
@@ -72,7 +82,8 @@ def get_player(connection: PgConnection, player_id: int) -> tuple:
         connection,
         """
         SELECT p.id, p.comunio_player_id, p.name, p.position, p.team_id, t.name,
-               mv.value_eur, p.source, p.first_seen_at, p.last_seen_at, p.updated_at, p.club_name
+               mv.value_eur, p.source, p.first_seen_at, p.last_seen_at, p.updated_at,
+               p.club_name, p.total_points
         FROM players AS p
         LEFT JOIN teams AS t ON t.id = p.team_id
         LEFT JOIN LATERAL (
@@ -86,6 +97,16 @@ def get_player(connection: PgConnection, player_id: int) -> tuple:
     if row is None:
         raise ResourceNotFoundError("player_not_found")
     return row
+
+
+def get_player_points(connection: PgConnection, player_id: int, season: str) -> list[tuple]:
+    if _execute_one(connection, "SELECT 1 FROM players WHERE id = %s", (player_id,)) is None:
+        raise ResourceNotFoundError("player_not_found")
+    return _execute(
+        connection,
+        "SELECT matchday, points FROM player_points WHERE player_id = %s AND season = %s",
+        (player_id, season),
+    )
 
 
 def list_teams(connection: PgConnection, limit: int, offset: int, search: str | None, league: str | None, season: str | None) -> tuple[list[tuple], int]:

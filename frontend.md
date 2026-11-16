@@ -130,12 +130,13 @@ Ziel: schneller Ueberblick, angelehnt an das Referenzdesign (KPI-Kacheln oben, z
 - Card "Markt-Trend" (grosse Flow-/Area-Chart-Karte): Recharts-Area-/Line-Chart mit den Top-N Spielern nach `abs(delta_previous_day_eur)` aus zuletzt geladenen Historien; alternativ (einfacher fuer v1) Platzhalter-Karte "Marktwert-Entwicklung ausgewaehlter Spieler" mit manueller Spielerauswahl (max. 3-5 Spieler zum Vergleich, siehe Abschnitt 4.2).
 - Card "Transfermarkt-Aktivitaet" (Donut-/Ring-Chart wie im Referenzbild "Traffic sources"): Anteil `listed=true` vs. `listed=false` am aktuellen Snapshot-Tag.
 - Card "Neu auf dem Transfermarkt" / "Top Marktwert-Gewinner/-Verlierer": kompakte Liste (Name, Team-Badge, `TrendBadge`) basierend auf den geladenen Listendaten.
+- Umgesetzt: Die Dashboard-Liste "Neueste Spieler im Datenstrom" zeigt die fünf Spieler mit dem neuesten `first_seen_at`-Zeitpunkt aus `GET /api/v1/players?limit=5&sort=newest`. `first_seen_at` wird beim erstmaligen Anlegen eines Spielers gesetzt und bei späteren Ingest-Updates nicht verändert; Gleichstände werden nach `id` absteigend aufgelöst. Die Liste zeigt damit Datenbank-Neuzugänge, nicht aktuelle Marktbewegungen.
 - Alle Dashboard-Karten sind bewusst auf **bereits vorhandene** API-Endpunkte begrenzt; es werden keine neuen Backend-Endpunkte in diesem Dokument vorausgesetzt. Wo ein Aggregat fehlt, wird das in Abschnitt 8 als offener Punkt vermerkt statt es zu erfinden.
 
 ### 4.2 Spielerliste (`/spieler`)
 
-- Datenquelle: `GET /api/v1/players` (`limit`, `offset`, `team_id`, `position`, `search`).
-- UI: Tabelle mit Spalten Name (Link zum Spielerdetail), Position (`Badge`), Club (Bundesligaverein), Team (Comunio-Besitzer), aktueller Marktwert (`current_value_eur`, formatiert als EUR). Fehlende Zuordnungen werden als "-" angezeigt.
+- Datenquelle: `GET /api/v1/players` (`limit`, `offset`, `team_id`, `position`, `search`, `sort`). `sort` ist standardmäßig `name` (alphabetisch); `sort=newest` sortiert nach `first_seen_at` absteigend und bei Gleichstand nach `id` absteigend.
+- UI: Tabelle mit Spalten Name (Link zum Spielerdetail), Position (`Badge`), Club (Bundesligaverein), Team (Comunio-Besitzer), Punkte (`total_points`) und aktueller Marktwert (`current_value_eur`, formatiert als EUR). Fehlende Zuordnungen werden als "-" angezeigt.
 - Umgesetzt: Textsuche (`search`) ueber den gesamten Spielerbestand. Eine neue Suche beginnt auf der ersten Seite; "Filter zuruecksetzen" entfernt Suche und Seitenversatz.
 - Umgesetzt: Pagination mit `limit=25` und `offset`; die gefilterte Gesamtzahl kommt aus `total` ("Zeige 1-25 von 412"). Vor und zurueck behalten den Suchbegriff. `search` und `offset` stehen in der URL, sodass Links und Browser-Verlauf Suche und Seite wiederherstellen.
 - Geplant: Team-Dropdown (`team_id`, gespeist aus `GET /api/v1/teams`) und Position-Dropdown (`position` enum `TW/ABW/MITT/ST`).
@@ -143,11 +144,13 @@ Ziel: schneller Ueberblick, angelehnt an das Referenzdesign (KPI-Kacheln oben, z
 
 ### 4.3 Spielerdetail (`/spieler/[id]`)
 
-- Datenquelle: `GET /api/v1/players/{id}` (Stammdaten) und `GET /api/v1/players/{id}/history` (`from_date`, `to_date`, `limit`).
-- Kopfbereich: Name, Position-Badge, Team-Link, `current_value_eur` gross dargestellt, `TrendBadge` fuer `delta_previous_day_eur`/`percent_delta_previous_day` aus dem juengsten History-Eintrag.
+- Datenquelle: `GET /api/v1/players/{id}` (Stammdaten), `GET /api/v1/players/{id}/history` (`from_date`, `to_date`, `limit`) und `GET /api/v1/players/{id}/points` (Spieltagspunkte der Saison 2026/27).
+- Kopfbereich: Name, Position-Badge, Team-Link, `current_value_eur` gross dargestellt sowie `total_points`; `TrendBadge` fuer `delta_previous_day_eur`/`percent_delta_previous_day` aus dem juengsten History-Eintrag.
 - Zeitraum-Umschalter (z. B. 30 Tage / 90 Tage / Saison / gesamt) steuert `from_date`/`to_date` fuer den History-Request neu.
 - Haupt-Chart: Recharts Line-/Area-Chart ueber `snapshot_date` vs. `value_eur`; Tooltip zeigt zusaetzlich `previous_value_eur`, `delta_previous_day_eur`, `percent_delta_previous_day` aus dem jeweiligen Datenpunkt.
 - Sekundaerblock "Seit Erstsichtung": zeigt `first_snapshot_date`, `first_value_eur`, `delta_first_eur`, `percent_delta_first` des neuesten Punkts als eigene KPI-Kachel.
+- Unter der Marktwertentwicklung zeigt ein Balkendiagramm die erfassten Spieltagspunkte; die begleitende Liste unterscheidet explizit `0` von `unbekannt`. Gesamtpunkte kommen direkt aus Comunio und sind nicht die Summe der moeglicherweise unvollstaendigen Historie.
+- Die Comunio-Spielerliste liefert `points` und `lastPoints`; eine Stichprobe von Kane und Nusa bestaetigt Gesamtpunkte und Punkte des letzten Spieltags. Die Zuordnung von `lastPoints` zu Spieltagen erfolgt anhand des hinterlegten Kalenders und ist eine Naeherung, keine von Comunio mitgelieferte Spieltagskennung. Grenzen und Pflege stehen in [data_model.md](data_model.md).
 - Nullable-Felder werden explizit als "keine Vergleichsdaten" (z. B. `-` oder ausgegrauter Text) dargestellt, nie als `0`, gemaess der Backend-Regel in `data_model.md` Abschnitt 4.
 - Fehlerzustand: 404 vom Backend -> eigener `ErrorState` mit Link zurueck zur Spielerliste.
 

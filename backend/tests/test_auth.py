@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 import src.api.app as api_app
 from src.api import auth
+from src.api.dependencies import get_db_connection
 
 USERNAME = "single-user"
 PASSWORD = "correct horse battery staple"
@@ -182,6 +183,28 @@ def test_ingest_runs_proxy_token_does_not_replace_session_identity(client: TestC
 
     assert response.status_code == 401
     assert response.json()["code"] == "unauthorized"
+
+
+def test_player_points_requires_session_and_proxy_secret(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(api_app, "api_proxy_secret", "proxy-secret")
+    calls = []
+    monkeypatch.setattr(api_app.repositories, "get_player_points", lambda *args: calls.append(args) or [])
+    api_app.app.dependency_overrides[get_db_connection] = lambda: object()
+    try:
+        missing_session = client.get("/api/v1/players/1/points", headers={"Authorization": "Bearer proxy-secret"})
+        client.cookies.set(auth.TOKEN_COOKIE_NAME, auth.create_access_token(USERNAME, JWT_SECRET), path="/")
+        missing_proxy = client.get("/api/v1/players/1/points")
+        wrong_proxy = client.get("/api/v1/players/1/points", headers={"Authorization": "Bearer wrong"})
+        assert not calls
+        allowed = client.get("/api/v1/players/1/points", headers={"Authorization": "Bearer proxy-secret"})
+    finally:
+        api_app.app.dependency_overrides.clear()
+    assert missing_session.status_code == 401
+    assert missing_session.json()["code"] == "unauthorized"
+    assert missing_proxy.status_code == wrong_proxy.status_code == 401
+    assert missing_proxy.json()["code"] == wrong_proxy.json()["code"] == "api_unauthorized"
+    assert allowed.status_code == 200
+    assert len(calls) == 1
 
 
 def test_login_is_throttled_after_five_attempts(client: TestClient) -> None:

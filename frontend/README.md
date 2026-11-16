@@ -16,6 +16,14 @@ The current stack uses Next.js 16.4.5, React 19, Tailwind CSS, Recharts 3, Vites
 
 The player list searches the complete API dataset and displays 25 results per page. Search and page offset are reflected in the URL, so pagination and browser history retain the active search.
 
+The dashboard's newest players are ordered by their first database insertion.
+The player list and profile show Comunio's total points; the profile also
+shows recorded matchday points and distinguishes zero from unknown. The
+matchday data is calendar-based and may be incomplete; see
+[data_model.md](../data_model.md#35-player_points). The API and database
+migration must be deployed before this frontend; this describes the code
+and does not confirm deployment.
+
 ## Data mode and ingest history
 
 The clickable **Datenmodus** panel opens the `/datenmodus` page with a read-only history of ingest runs

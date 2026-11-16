@@ -124,6 +124,17 @@ class ComunioPyClient:
         return default
 
     @staticmethod
+    def _normalize_points(raw_points: Any) -> int | None:
+        if raw_points is None:
+            return None
+        if isinstance(raw_points, bool) or not isinstance(raw_points, (int, str)):
+            raise ComunioSnapshotError("Invalid player points")
+        try:
+            return int(raw_points)
+        except (TypeError, ValueError) as error:
+            raise ComunioSnapshotError("Invalid player points") from error
+
+    @staticmethod
     def _normalize_position(raw_position: Any) -> str:
         mapping = {
             # Comunio REST API values
@@ -268,6 +279,8 @@ class ComunioPyClient:
                 "position": normalized_pos,
                 "club_name": club.get("name") or None,
                 "team_comunio_id": int(owner["id"]) if owner.get("id") is not None else None,
+                "total_points": self._normalize_points(p.get("points")),
+                "last_points": self._normalize_points(p.get("lastPoints")),
             })
             market_values_out.append({
                 "comunio_player_id": int(pid),
@@ -313,6 +326,12 @@ class ComunioPyClient:
                     "position": self._normalize_position(position),
                     "club_name": self._get_any(p, ("club_name",)),
                     "team_comunio_id": int(team_comunio_id) if team_comunio_id is not None else None,
+                    "total_points": self._normalize_points(
+                        self._get_any(p, ("total_points", "totalPoints", "points"))
+                    ),
+                    "last_points": self._normalize_points(
+                        self._get_any(p, ("last_points", "lastPoints"))
+                    ),
                 }
             )
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
 import hmac
 import os
 import re
-from typing import Annotated, TypeVar
+from typing import Annotated, Literal, TypeVar
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -19,9 +19,11 @@ from .dependencies import get_db_connection
 from .errors import RepositoryUnavailableError, ResourceNotFoundError
 from .schemas import (
     MarketValuePoint,
+    MatchdayPoints,
     Page,
     PlayerDetail,
     PlayerHistoryResponse,
+    PlayerPointsResponse,
     PlayerSummary,
     Position,
     IngestRunItem,
@@ -36,6 +38,7 @@ from .schemas import (
     TransferMarketResponse,
 )
 from src.secret_sources import resolve_environment_secret
+from src.matchdays import MATCHDAYS, SEASON
 
 app_env = os.getenv("APP_ENV", "dev").strip().lower()
 is_production = app_env in {"prod", "production"}
@@ -259,16 +262,17 @@ def players(
     team_id: Annotated[int | None, Query(gt=0)] = None,
     position: Position | None = None,
     search: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+    sort: Literal["name", "newest"] = "name",
 ) -> Page[PlayerSummary]:
-    rows, total = repositories.list_players(connection, limit, offset, team_id, position.value if position else None, search)
-    items = [PlayerSummary(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], club_name=row[7]) for row in rows]
+    rows, total = repositories.list_players(connection, limit, offset, team_id, position.value if position else None, search, sort)
+    items = [PlayerSummary(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], club_name=row[7], total_points=row[8]) for row in rows]
     return Page(items=items, limit=limit, offset=offset, total=total)
 
 
 @app.get("/api/v1/players/{player_id}", response_model=PlayerDetail)
 def player(player_id: int, connection: Db) -> PlayerDetail:
     row = repositories.get_player(connection, player_id)
-    return PlayerDetail(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], source=row[7], first_seen_at=row[8], last_seen_at=row[9], updated_at=row[10], club_name=row[11])
+    return PlayerDetail(id=row[0], comunio_player_id=row[1], name=row[2], position=row[3], team_id=row[4], team_name=row[5], current_value_eur=row[6], source=row[7], first_seen_at=row[8], last_seen_at=row[9], updated_at=row[10], club_name=row[11], total_points=row[12])
 
 
 @app.get(
@@ -309,6 +313,25 @@ def player_history(
                 percent_delta_first=row[10],
             )
             for row in rows
+        ],
+    )
+
+
+@app.get(
+    "/api/v1/players/{player_id}/points",
+    response_model=PlayerPointsResponse,
+    responses={404: {"description": "Player not found"}, 503: {"description": "Database unavailable"}},
+)
+def player_points(player_id: int, connection: Db) -> PlayerPointsResponse:
+    points_by_matchday = dict(repositories.get_player_points(connection, player_id, SEASON))
+    today = datetime.now(UTC).date()
+    return PlayerPointsResponse(
+        player_id=player_id,
+        season=SEASON,
+        items=[
+            MatchdayPoints(matchday=index, points=points_by_matchday.get(index))
+            for index, (_, end) in enumerate(MATCHDAYS, 1)
+            if end < today
         ],
     )
 

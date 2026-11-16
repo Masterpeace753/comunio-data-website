@@ -99,6 +99,16 @@ history route was rejected as expected.
 
 ## Notes
 
+- `sort=newest` on `GET /api/v1/players` orders by first database insertion
+  for the dashboard; the default remains alphabetical.
+- Player responses include nullable Comunio season `total_points`. The
+  authenticated `GET /api/v1/players/{id}/points` returns completed matchdays
+  for 2026/27, including `null` for unrecorded points. The calendar-based
+  capture windows, including the restricted windows for matchdays 16 and 24,
+  and their limitations are documented in [data_model.md](../data_model.md#35-player_points).
+  Apply `006_player_total_points.sql` with the migration runner before
+  deploying the updated API and Ingest. Deploy the API before the frontend.
+  These changes describe the code, not a confirmed production deployment.
 - Player responses include `club_name` (football club) separately from
   `team_id`/`team_name` (Comunio owner). Apply migration
   `005_player_club.sql` before deploying the updated API and ingest. Club names

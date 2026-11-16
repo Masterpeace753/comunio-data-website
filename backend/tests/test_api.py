@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import src.api.app as api_app
 from src.api import auth
 from src.api.dependencies import get_db_connection
-from src.api.errors import ResourceNotFoundError
+from src.api.errors import RepositoryUnavailableError, ResourceNotFoundError
 
 API_AUTH_CONFIG = auth.AuthConfig(
     username="test-user",
@@ -78,7 +78,7 @@ def test_players_returns_typed_page(monkeypatch) -> None:
     monkeypatch.setattr(
         api_app.repositories,
         "list_players",
-        lambda *args: ([(1, 1001, "Max", "MITT", 2, "Testteam", 1250000, "FC Bayern")], 1),
+        lambda *args: ([(1, 1001, "Max", "MITT", 2, "Testteam", 1250000, "FC Bayern", 18)], 1),
     )
 
     try:
@@ -98,6 +98,7 @@ def test_players_returns_typed_page(monkeypatch) -> None:
                 "team_name": "Testteam",
                 "current_value_eur": 1250000,
                 "club_name": "FC Bayern",
+                "total_points": 18,
             }
         ],
         "limit": 10,
@@ -116,6 +117,49 @@ def test_player_history_rejects_reversed_date_range(monkeypatch) -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "invalid_date_range"
+
+
+def test_player_points_includes_unknown_and_zero_for_completed_matchdays(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+
+    class FixedDateTime:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 9, 14, tzinfo=tz)
+
+    monkeypatch.setattr(api_app, "datetime", FixedDateTime)
+    monkeypatch.setattr(api_app.repositories, "get_player_points", lambda *args: [(2, 0), (3, -2)])
+    try:
+        response = test_client.get("/api/v1/players/1/points")
+    finally:
+        api_app.app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json() == {
+        "player_id": 1, "season": "2026/27",
+        "items": [{"matchday": 1, "points": None}, {"matchday": 2, "points": 0}, {"matchday": 3, "points": -2}],
+    }
+
+
+def test_unknown_player_points_returns_404(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    monkeypatch.setattr(api_app.repositories, "get_player_points", lambda *args: (_ for _ in ()).throw(ResourceNotFoundError("player_not_found")))
+    try:
+        response = test_client.get("/api/v1/players/999/points")
+    finally:
+        api_app.app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
+def test_player_points_database_error_is_sanitized(monkeypatch) -> None:
+    test_client = client(monkeypatch)
+    monkeypatch.setattr(api_app.repositories, "get_player_points", lambda *args: (_ for _ in ()).throw(RepositoryUnavailableError("private database detail")))
+    try:
+        response = test_client.get("/api/v1/players/1/points")
+    finally:
+        api_app.app.dependency_overrides.clear()
+    assert response.status_code == 503
+    assert response.json() == {"code": "api_database_unavailable", "message": "Database is not ready."}
+    assert "private database detail" not in response.text
 
 
 def test_unknown_player_returns_sanitized_404(monkeypatch) -> None:
