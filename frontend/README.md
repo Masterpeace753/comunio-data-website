@@ -16,7 +16,7 @@ The current stack uses Next.js 16.4.5, React 19, Tailwind CSS, Recharts 3, Vites
 
 ## Data mode and ingest history
 
-The clickable **Datenmodus** panel opens a read-only history of ingest runs
+The clickable **Datenmodus** panel opens the `/datenmodus` page with a read-only history of ingest runs
 registered in the backend. It shows each run's type, status, stage, timestamps,
 record count, and a safe display label for known error codes. The current data
 date is the latest available market-value `snapshot_date` (UTC); it is not the
