@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DataModeDialog } from "./DataModeDialog";
+import DataModePage from "./page";
 import { getIngestRuns } from "@/lib/api/ingest";
 import type { IngestRunsResponse } from "@/lib/api/types";
 
@@ -30,29 +30,18 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("Datenmodus dialog", () => {
-  it("opens accessibly, focuses the dialog, closes with Escape, and restores trigger focus", async () => {
+describe("Datenmodus page", () => {
+  it("loads as a page rather than a dialog", async () => {
     getRunsMock.mockResolvedValue(makeResponse());
-    render(<DataModeDialog />);
-    const trigger = screen.getByRole("button", { name: /datenmodus.*ladeverlauf anzeigen/i });
-    trigger.focus();
-    fireEvent.click(trigger);
-
-    const dialog = await screen.findByRole("dialog", { name: "Datenladeverlauf" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Datenladeverlauf schließen" })).toHaveFocus());
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.keyDown(document, { key: "Escape" });
+    render(<DataModePage />);
+    expect(screen.getByRole("heading", { name: /datenladeverlauf/i, level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(await screen.findByText(/Erfolgreich/)).toBeInTheDocument();
   });
 
   it("renders the UTC data date and attempt details, and requests the exact initial page", async () => {
     getRunsMock.mockResolvedValue(makeResponse());
-    render(<DataModeDialog />);
-    fireEvent.click(screen.getByRole("button", { name: /datenmodus/i }));
+    render(<DataModePage />);
 
     expect(await screen.findByText(/Erfolgreich/)).toBeInTheDocument();
     expect(screen.getByTestId("current-data-date")).toHaveTextContent("07.11.2026");
@@ -93,8 +82,7 @@ describe("Datenmodus dialog", () => {
         offset: 25,
         total: 26,
       }));
-    render(<DataModeDialog />);
-    fireEvent.click(screen.getByRole("button", { name: /datenmodus/i }));
+    render(<DataModePage />);
     await waitFor(() => expect(screen.getAllByText(/Läuft/)).toHaveLength(25));
     expect(screen.getAllByText(/Noch nicht beendet/)).toHaveLength(25);
 
@@ -108,8 +96,7 @@ describe("Datenmodus dialog", () => {
   it("shows loading, unavailable-date, and empty-history states", async () => {
     let resolveRuns!: (value: Awaited<ReturnType<typeof getIngestRuns>>) => void;
     getRunsMock.mockReturnValue(new Promise((resolve) => { resolveRuns = resolve; }));
-    render(<DataModeDialog />);
-    fireEvent.click(screen.getByRole("button", { name: /datenmodus/i }));
+    render(<DataModePage />);
     expect(screen.getByRole("status")).toHaveTextContent("Lade Status und Ladeversuche");
 
     resolveRuns(makeResponse({ current_data_date: null, items: [], total: 0 }));
@@ -121,8 +108,7 @@ describe("Datenmodus dialog", () => {
 
   it("shows a recoverable error and retries the current page", async () => {
     getRunsMock.mockRejectedValueOnce(new Error("network detail")).mockResolvedValueOnce(makeResponse());
-    render(<DataModeDialog />);
-    fireEvent.click(screen.getByRole("button", { name: /datenmodus/i }));
+    render(<DataModePage />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Ladeverlauf nicht verfügbar");
     expect(screen.queryByText("network detail")).not.toBeInTheDocument();
 
@@ -131,12 +117,4 @@ describe("Datenmodus dialog", () => {
     expect(getRunsMock).toHaveBeenNthCalledWith(2, { limit: 25, offset: 0 });
   });
 
-  it("closes with the close button", async () => {
-    getRunsMock.mockResolvedValue(makeResponse());
-    render(<DataModeDialog />);
-    fireEvent.click(screen.getByRole("button", { name: /datenmodus/i }));
-    await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: "Datenladeverlauf schließen" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
 });
