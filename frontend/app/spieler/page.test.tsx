@@ -21,7 +21,7 @@ vi.mock("@/components/tables/DataTables", () => ({
 function page(offset: number, total: number, name?: string): Page<PlayerSummary> {
   return {
     offset, total, limit: 25,
-    items: name ? [{ id: offset + 1, comunio_player_id: offset + 1, name, position: "ST", club_name: null, team_id: null, team_name: null, current_value_eur: null }] : [],
+    items: name ? [{ id: offset + 1, comunio_player_id: offset + 1, name, position: "ST", club_name: null, team_id: null, team_name: null, current_value_eur: null, total_points: null }] : [],
   };
 }
 

@@ -167,6 +167,17 @@ erhalten den Suchbegriff; eine neue Suche beginnt bei Versatz 0. URL und
 Browser-Verlauf ermöglichen die Rückkehr zu einer vorherigen Suche oder Seite.
 Diese Beschreibung betrifft den Code-Stand und bestätigt kein Deployment.
 
+### 3.4 Dashboard und Spielerpunkte
+
+Das Dashboard fordert die fünf zuletzt erstmals gespeicherten Spieler mit
+`sort=newest` an. Die Spielerübersicht zeigt die Comunio-Gesamtpunkte; im
+Spielerprofil liefert ein eigener read-only-Endpunkt die Spieltagshistorie
+2026/27. Der Ingest ordnet `lastPoints` anhand eines hinterlegten Kalenders
+zu. Fehlende Werte bleiben unbekannt und sind keine Nullpunkte. Datenfluss,
+Zeitfenster, Grenzen und Kalenderpflege stehen im
+[Datenmodell](data_model.md#35-player_points). Dies beschreibt den Code-Stand
+und bestätigt kein Deployment.
+
 ## 4. Secrets und Betriebsgrenzen
 
 - Produktionssecrets liegen in Host-Dateien außerhalb des Repositories und

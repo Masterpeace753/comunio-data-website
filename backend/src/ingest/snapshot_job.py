@@ -4,6 +4,8 @@ import datetime as dt
 
 from psycopg2.extensions import connection as PgConnection
 
+from src.matchdays import SEASON, matchday_for_capture
+
 
 def start_ingest_run(conn: PgConnection, run_type: str, stage: str = "login") -> int:
     with conn.cursor() as cur:
@@ -105,14 +107,15 @@ def _upsert_players(conn: PgConnection, players: list[dict], team_map: dict[int,
 
             cur.execute(
                 """
-                INSERT INTO players(comunio_player_id, name, position, team_id, club_name)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO players(comunio_player_id, name, position, team_id, club_name, total_points)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (comunio_player_id)
                 DO UPDATE SET
                     name = EXCLUDED.name,
                     position = EXCLUDED.position,
                     team_id = EXCLUDED.team_id,
                     club_name = EXCLUDED.club_name,
+                    total_points = EXCLUDED.total_points,
                     last_seen_at = now(),
                     updated_at = now()
                 RETURNING id, comunio_player_id
@@ -123,6 +126,7 @@ def _upsert_players(conn: PgConnection, players: list[dict], team_map: dict[int,
                     player["position"],
                     team_fk,
                     player.get("club_name"),
+                    player.get("total_points"),
                 ),
             )
             row = cur.fetchone()
@@ -165,11 +169,37 @@ def _upsert_market_values(conn: PgConnection, market_values: list[dict], player_
     return written
 
 
+def _upsert_player_points(
+    conn: PgConnection, players: list[dict], player_map: dict[int, int],
+    captured_at: dt.datetime, completed_at: dt.datetime, run_type: str,
+) -> None:
+    matchday = matchday_for_capture(captured_at, completed_at, run_type)
+    if matchday is None:
+        return
+    with conn.cursor() as cur:
+        for player in players:
+            player_id = player_map.get(int(player["comunio_player_id"]))
+            points = player.get("last_points")
+            if player_id is None or points is None:
+                continue
+            cur.execute(
+                """
+                INSERT INTO player_points(player_id, season, matchday, points, captured_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (player_id, season, matchday)
+                DO UPDATE SET points = EXCLUDED.points, captured_at = EXCLUDED.captured_at
+                WHERE EXCLUDED.captured_at >= player_points.captured_at
+                """,
+                (player_id, SEASON, matchday, points, captured_at),
+            )
+
+
 def run_manual_snapshot(
     conn: PgConnection,
     normalized_snapshot: dict[str, list[dict]],
     run_type: str = "manual",
     run_id: int | None = None,
+    captured_at: dt.datetime | None = None,
 ) -> tuple[int, int]:
     """Execute the AP-7/AP-9 snapshot transaction flow.
 
@@ -187,6 +217,11 @@ def run_manual_snapshot(
         team_map = _upsert_teams(conn, normalized_snapshot.get("teams", []))
         player_map = _upsert_players(conn, normalized_snapshot.get("players", []), team_map)
         written = _upsert_market_values(conn, normalized_snapshot.get("market_values", []), player_map, run_id)
+        if captured_at is not None:
+            _upsert_player_points(
+                conn, normalized_snapshot.get("players", []), player_map,
+                captured_at, dt.datetime.now(dt.UTC), run_type,
+            )
         _mark_ingest_run(conn, run_id, status="success", records_written=written, stage="snapshot")
         return run_id, written
     except Exception:

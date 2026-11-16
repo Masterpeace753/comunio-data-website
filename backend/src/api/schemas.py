@@ -61,6 +61,7 @@ class PlayerSummary(BaseModel):
     team_name: str | None
     current_value_eur: int | None
     club_name: str | None
+    total_points: int | None
 
 
 class PlayerDetail(PlayerSummary):
@@ -104,6 +105,17 @@ class PlayerHistoryResponse(BaseModel):
     from_date: date | None
     to_date: date | None
     items: list[MarketValuePoint]
+
+
+class MatchdayPoints(BaseModel):
+    matchday: int
+    points: int | None
+
+
+class PlayerPointsResponse(BaseModel):
+    player_id: int
+    season: str
+    items: list[MatchdayPoints]
 
 
 class TransferMarketItem(BaseModel):

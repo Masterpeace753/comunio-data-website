@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import time
 import sys
 
@@ -171,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
+        captured_at = datetime.now(UTC)
         raw_snapshot = _fetch_with_backoff(client)
         normalized_snapshot = client.normalize_snapshot(raw_snapshot)
     except Exception as exc:
@@ -185,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             normalized_snapshot,
             run_type=args.run_type,
             run_id=run_id,
+            captured_at=None if settings.comunio_snapshot_file else captured_at,
         )
     except Exception as exc:
         _record_failure(conn, run_id, "persistence")
