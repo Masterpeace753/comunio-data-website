@@ -1,5 +1,11 @@
 # AWS deployment baseline
 
+> **Historical/optional alternative:** New features default to the Ubuntu/Linux
+> VPS documented in [infra/vps/README.md](../vps/README.md). Use these AWS
+> instructions only when a task explicitly requests AWS. Status statements
+> below are historical evidence and must not be treated as a verified current
+> AWS deployment state.
+
 Infrastructure-Version: v0.5.4
 Dokumentationsstand: 2026-10-12
 
@@ -229,7 +235,7 @@ terraform init -reconfigure     # use when the state is already in S3
 terraform plan                  # verify no unexpected diff
 ```
 
-Rotation note: `git ls-files`/`git log` confirm `terraform.tfstate*` and `terraform.tfvars` were never committed, so there is no Git/GitHub exposure vector for the RDS master password stored in state. Rotation is therefore treated as a scheduled P2 hardening step (documented in `architecture.md` §5.2), not an immediate P1 gate.
+Rotation note: `git ls-files`/`git log` confirm `terraform.tfstate*` and `terraform.tfvars` were never committed, so there is no Git/GitHub exposure vector for the RDS master password stored in state. Rotation is therefore treated as a scheduled P2 hardening step (documented in [historical AWS architecture notes](../../docs/architecture/aws-legacy-notes.md) §5.2), not an immediate P1 gate.
 
 ## Build and push
 

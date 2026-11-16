@@ -1,5 +1,7 @@
 # Implementierungsplan fuer das Comunio-Projekt
 
+> **Plattformvorgabe für neue Arbeit:** Der Standard ist Ubuntu/Linux auf dem vorhandenen VPS-Stack. Neue Backend-, Datenpipeline- und Betriebsfeatures werden für Docker Compose, FastAPI, PostgreSQL, Caddy und systemd entwickelt; das Frontend bleibt auf Vercel. AWS-Arbeit erfolgt nur auf ausdrückliche Anfrage. Die AWS-lastigen Phasen und Entscheidungen unten sind historische Projektplanung, keine aktuelle Zielarchitektur oder To-do-Liste. Für Betrieb und aktuelle Aufgaben gelten [README.md](README.md) und das [VPS-Runbook](infra/vps/README.md).
+
 ## 1. Zielbild
 
 Dieser Plan setzt das Lastenheft in umsetzbare Arbeitspakete um und orientiert sich an den vorgegebenen Ausbaustufen, dem Zeitplan und den nicht-funktionalen Anforderungen.
@@ -68,7 +70,7 @@ Ergebnis:
 
 ### AP-5 Deliverables (umgesetzt)
 
-- Backend-Konfiguration fuer Credentials aus AWS Secrets Manager oder ENV.
+- Backend-Konfiguration mit dateibasierten VPS-Secrets; AWS Secrets Manager bleibt für die historische AWS-Alternative unterstützt.
 - ComunioPy-Client-Bootstrap mit expliziter Login-Validierung.
 - Manueller Runner fuer Login-Flow (ohne Snapshot-Verarbeitung).
 
@@ -126,8 +128,8 @@ Ziele:
 
 Arbeitspakete:
 
-- AP-9 Scheduler fuer taegliche Runs mit AWS Tools (implementiert, aktiviert und Stabilitaetsnachweis ueber drei Zeitfenster erbracht, siehe Abschnitt 19)
-- AP-9.2 Login-Retry und automatischer Erfolgs-/Fehler-Check (umgesetzt): 3 Login-Versuche im 5-Minuten-Abstand, CloudWatch-Alarm bei erschoepften Retries
+- AP-9 Scheduler fuer taegliche Runs (historisch AWS EventBridge; aktueller VPS-Scheduler ist ein systemd-User-Timer, siehe [VPS-Runbook](infra/vps/README.md))
+- AP-9.2 Login-Retry (3 Versuche im 5-Minuten-Abstand); der CloudWatch-Alarm gilt nur für die historische AWS-Alternative
 - AP-10 Idempotenz-Regeln und Retry-Strategien
 - AP-10a Security baseline enforcement (Secrets-Policy, DB-TLS-Policy, Logging-Sanitization, Snapshot-Input-Haertung, immutable Images und Netzwerk-Exposure)
 - AP-10b Production Gate Enforcement in CI (Deploy-Block bei Gate-Verletzung, Secret-Scan, Dependency-Scan und Terraform-Pruefungen)
@@ -146,7 +148,7 @@ Ziele:
 
 - Minimal-Frontend und danach Komfort-Ausbau
 
-Stand 2026-09-20: Das Frontend-v1 ist unter `frontend/` implementiert und in CI mit `npm ci`, `npm audit --audit-level=moderate`, Tests, ESLint und Production-Build abgesichert. Vercel-Konfiguration und serverseitiger Next.js-Proxy sind vorbereitet; AP-13.a (Secret-Validierung in der FastAPI) ist umgesetzt. HTTPS/ACM und die produktive Vercel-Umgebungsvariablen bleiben vor dem sicheren Frontend-Livegang zu verifizieren.
+Stand 2026-11-16: Das Frontend ist auf Vercel produktiv und für PR-Preview-Deployments eingerichtet. FastAPI und Ingest laufen auf dem Linux-VPS; der Vercel-Proxy verbindet sich serverseitig mit der VPS-API. Vercel-Preview-Origins sind auf das konkrete Projekt-/Team-Muster begrenzt. Für aktuelle Bereitstellung und Betriebsaufgaben gilt ausschließlich das [VPS-Runbook](infra/vps/README.md).
 
 Arbeitspakete:
 
@@ -163,7 +165,7 @@ Zugriffsmodell fuer das Frontend:
 - Das Secret darf niemals in Client-JavaScript, HTML oder oeffentlichen Repositories auftauchen.
 - Direkte API-Aufrufe ohne Proxy-Authentifizierung werden mit `401` abgewiesen.
 - Der Proxy uebernimmt Timeout, Fehlerweitergabe, Rate-Limit-Budget und spaeter optionales Caching.
-- In der Uebergangsphase bleibt der API-ALB oeffentlich; als Folge-Haertung werden interne API-Subnets oder ein privater ALB vorgesehen.
+- Aktueller Pfad: Vercel-Proxy über HTTPS zu Caddy auf dem VPS, der intern an die FastAPI weiterleitet. Der API-ALB gehört ausschließlich zur historischen AWS-Alternative.
 
 Ergebnis:
 
@@ -335,7 +337,7 @@ Definition of Done:
 
 ### AP-14 Eigener Login (Einzel-User, JWT im HttpOnly-Cookie; AP-14.1 bis AP-14.6)
 
-AP-14 ergaenzt AP-13.a um eine Benutzeranmeldung. Aufruf einer bestehenden Vercel-URL ohne gueltige Session fuehrt zur Login-Seite; nach erfolgreichem Login geht es zur urspruenglich aufgerufenen Seite zurueck. Es gibt genau einen User. Das Proxy-Secret aus AP-13.a bleibt unabhaengig davon als zusaetzliche Schutzschicht bestehen. Der Browser spricht nur die Vercel-Origin an; Next.js-Serverrouten leiten Auth- und API-Requests an das Backend weiter. Architektur und Vertrauensgrenzen: `architecture.md`, Abschnitt 5.1.1.
+AP-14 ergaenzt AP-13.a um eine Benutzeranmeldung. Aufruf einer bestehenden Vercel-URL ohne gueltige Session fuehrt zur Login-Seite; nach erfolgreichem Login geht es zur urspruenglich aufgerufenen Seite zurueck. Es gibt genau einen User. Das Proxy-Secret aus AP-13.a bleibt unabhaengig davon als zusaetzliche Schutzschicht bestehen. Der Browser spricht nur die Vercel-Origin an; Next.js-Serverrouten leiten Auth- und API-Requests an das Backend weiter. Architektur und Vertrauensgrenzen: `architecture.md`, Abschnitt 3.1.
 
 #### AP-14-Status (Arbeitsbaum, kein AWS-Livenachweis)
 
@@ -699,7 +701,7 @@ Lokales `terraform.tfstate` ohne Locking und Durability stellt ein Reliability-R
 **P3 — Automatische RDS-Credential-Rotation (später).**
 Ein Lambda-Rotation-Handler für Secrets Manager wird nach der State-Migration als P3 implementiert.
 
-**Trade-offs:** S3+DynamoDB kostet cents/mo, bringt aber State-Locking und Versioning. Terraform Cloud wäre vendor-agnostic, führt aber eine zweite Plattform-Abhängigkeit ein — für dieses AWS-only-Projekt nicht optimal.
+**Trade-offs (historische AWS-Alternative):** S3+DynamoDB kostet cents/mo, bringt aber State-Locking und Versioning. Terraform Cloud wäre vendor-agnostic, führt aber eine zweite Plattform-Abhängigkeit ein — für diesen AWS-Pfad nicht optimal.
 
 ### 20.2 Principal Software Engineer (Log-Sanitization)
 
@@ -752,7 +754,7 @@ Separierung von „wer kann Infra deployen" (terraform role) von „wer liest Se
 1. ✅ `backend/tests/test_scheduled_runner.py`: Sanitization-Tests (sensible Substrings abgedeckt).
 1. ✅ `infra/aws/terraform/state_backend.tf`: S3-Bucket (versioned, AES256, public-access-blocked, 90d lifecycle) + DynamoDB lock table.
 1. ✅ `infra/aws/terraform/backend.tf`: Auskommentierter `backend "s3"` Block (Runbook-triggert Aktivierung).
-1. ✅ `architecture.md` §5.1/§5.2: Logging-Gate dokumentiert, State-Exposure-Analyse eingefügt.
+1. ✅ [Historische AWS-Architektur](docs/architecture/aws-legacy-notes.md) §5.1/§5.2: Logging-Gate dokumentiert, State-Exposure-Analyse eingefügt.
 1. ✅ `infra/aws/README.md`: Remote-State-Migrationsprozess dokumentiert.
 1. ✅ `terraform validate`: Erfolgreich, keine Fehler.
 

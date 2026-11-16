@@ -1,21 +1,26 @@
 # Frontend-Konzept fuer das Comunio-Projekt
 
+> **Plattformvorgabe:** Das Frontend bleibt auf Vercel. Neue Backend- und
+> Ingest-Funktionalität gehört standardmäßig auf den Ubuntu/Linux-VPS und wird
+> über den serverseitigen Next.js-Proxy angebunden. AWS ist eine historische,
+> optionale Alternative und wird nur auf ausdrückliche Anfrage verwendet.
+
 Dieses Dokument ist die verbindliche Spezifikation und Bauanleitung fuer das Frontend. Es beschreibt Framework-Wahl, Design-System, Informationsarchitektur, Komponenten, Datenanbindung und den empfohlenen Umsetzungsablauf. Der v1-Stand ist unter `frontend/` umgesetzt; dieses Dokument bleibt die fachliche Referenz fuer Erweiterungen.
 
 Bezug zu den bestehenden Projektdokumenten:
 
-- `architecture.md` Abschnitt 3.3: Frontend Service (React auf Vercel), Dashboard/Team-/Spieleransichten, historische Visualisierung, Filter/Suche/Sortierung/Vergleich.
+- `architecture.md` Abschnitte 2.1 und 3.1: Next.js auf Vercel mit serverseitigem BFF; die Backend- und Ingest-Laufzeit ist der Linux-VPS.
 - `data_model.md`: liefert die Datenfelder, die im Frontend dargestellt werden (Spieler, Teams, Marktwert-Historie mit Deltas, Transfermarkt).
 - `backend/src/api/app.py` und `backend/src/api/schemas.py`: der aktuelle, verbindliche REST-Vertrag `/api/v1/...`, gegen den das Frontend implementiert wird.
 
 ## 1. Ziele und Leitplanken
 
 - Read-only-Dashboard fuer Comunio-Daten: Spieler, Teams, Marktwert-Historie mit Deltas, Transfermarkt.
-- Performance-Ziel gemaess `architecture.md`: Seitenladezeit unter 2 Sekunden, API P95 unter 500 ms wird vom Backend eingehalten.
+- Performance-Ziele gemaess `architecture.md`: Seitenladezeit unter 2 Sekunden und API-P95 unter 500 ms. Sie sind keine Zusicherung erreichter Produktions-SLOs.
 - Deployment-Ziel: Vercel (statische/Edge-Auslieferung, CDN, Preview-Deployments je PR).
 - Kein eigener Fachdaten-Backend-Code im Frontend: alle Daten kommen ausschliesslich ueber die bestehende FastAPI unter `/api/v1`.
 - Der Browser spricht ausschliesslich den serverseitigen Next.js-Proxy unter `/api/proxy/...` an. `API_PROXY_SECRET` bleibt eine serverseitige Vercel-Umgebungsvariable und wird nie an Client-JavaScript weitergegeben.
-- Es gibt in Phase 1 keinen Benutzerlogin. Der Proxy unterstuetzt die technische Proxy-Authentifizierung; die verpflichtende Validierung dieses Secrets in der FastAPI ist AP-13.a und muss vor dem Produktions-Livegang aktiviert werden. Direkte Browser-Aufrufe auf die FastAPI sind kein unterstuetzter Frontend-Pfad.
+- Der Benutzerlogin und die technische Proxy-Authentifizierung sind implementiert. `API_PROXY_SECRET` bleibt serverseitig; direkte Browser-Aufrufe auf die FastAPI sind kein unterstützter Frontend-Pfad.
 
 ## 2. Framework-Entscheidung
 
@@ -23,7 +28,7 @@ Bezug zu den bestehenden Projektdokumenten:
 
 Begruendung:
 
-- `architecture.md` legt bereits **React auf Vercel** fest. Next.js ist das von Vercel selbst entwickelte React-Framework mit nativer Vercel-Integration (Zero-Config-Deployment, Preview-URLs, Edge-Caching) und erfuellt damit die bestehende Architekturentscheidung direkt, ohne sie zu aendern.
+- `architecture.md` legt **Next.js auf Vercel** als Frontend und BFF fest; die VPS-API wird ausschließlich serverseitig angebunden.
 - App Router + statische Seiten und Client Components fuer interaktive Teile (Charts, Filter, Suche) unterstuetzen das <2s-Ladeziel. Die Datenzugriffe laufen ueber den serverseitigen Proxy; relative Browser-Requests werden nicht direkt an die FastAPI gerichtet.
 - TypeScript sichert die Vertragstreue zum Backend: die Pydantic-Schemas aus `backend/src/api/schemas.py` werden 1:1 als TypeScript-Typen gespiegelt (siehe Abschnitt 6).
 - Tailwind CSS passt zum gewuenschten Dark-Mode-Design (utility-first, einfache Theming-Variablen fuer Farben/Spacing, gute Performance durch Purging ungenutzter Klassen).
@@ -34,7 +39,7 @@ Begruendung:
 Alternativen wurden bewusst verworfen:
 
 - Vite + reines React: kein natives SSR/ISR, mehr manuelle Vercel-Konfiguration, kein Vorteil gegenueber Next.js bei diesem Anwendungsfall.
-- Nuxt/Vue oder SvelteKit: kein Bezug zu "React auf Vercel" aus `architecture.md`, zusaetzlicher Technologie-Bruch ohne Mehrwert.
+- Nuxt/Vue oder SvelteKit: zusätzlicher Technologie-Bruch ohne Mehrwert gegenüber der bestehenden Next.js-Implementierung.
 
 ## 3. Design-System: "Dark Mode Professional" (Navy + Neon-Akzente)
 
@@ -253,8 +258,7 @@ Diese Punkte sind bewusst **nicht** Teil der ersten Umsetzung und werden hier nu
 
 - Aggregat-Endpunkt fuer "Gesamtmarktwert"/"Durchschnittsmarktwert" existiert im Backend noch nicht; falls gewuenscht, muss dies zuerst als neuer `/api/v1/...`-Endpunkt spezifiziert werden. Das Frontend-Layout haelt dafuer bereits eine deaktivierte Platzhalter-Kachel vor (Abschnitt 4.1); sobald der Endpunkt steht, wird nur `lib/api/` um eine Funktion ergaenzt und die Kachel von Platzhalter- auf Live-Zustand umgeschaltet, ohne Layout-Aenderung.
 - Freigabe zur Anzeige von `owner_name` (Comunio-Benutzername) im Transfermarkt liegt vor; `NEXT_PUBLIC_SHOW_OWNER_NAME` startet daher mit `true` und dient nur noch als Notfall-Schalter, falls die Freigabe spaeter widerrufen wird.
-- Benutzer-Authentifizierung und Rollen (Admin/User) sind laut `architecture.md` Abschnitt 5 noch nicht spezifiziert; v1 ist daher ohne Benutzerlogin read-only. Der technische serverseitige Proxy-Secret-Schutz ist bereits vorgesehen.
-- AP-13.a bleibt vor dem Livegang offen: Die FastAPI muss direkte Requests ohne gueltiges Proxy-Secret mit `401` ablehnen; danach sind Proxy-, 401-, Timeout- und Fehlerweitergabe-Tests gegen die produktive API auszufuehren.
+- Die Anmeldung für den einzelnen Benutzer und die serverseitige Proxy-Authentifizierung sind implementiert. Rollen und Mehrbenutzerverwaltung sind nicht Teil des aktuellen Umfangs; Vertrauensgrenzen und Sessionverhalten stehen in `architecture.md`, Abschnitt 3.1.
 - "Zuletzt aktualisiert am"-Anzeige (aus `ingest_runs`) benoetigt einen eigenen kleinen Status-Endpunkt (z. B. `GET /api/v1/status`); die Daten dafuer existieren bereits in `ingest_runs`, es fehlt nur die API-Exposition. Der Header haelt dafuer bereits eine deaktivierte Platzhalter-Anzeige vor (siehe oben); sobald der Endpunkt steht, wird nur `lib/api/` ergaenzt und die Anzeige von Platzhalter- auf Live-Zustand umgeschaltet.
 
 ## 9. Umsetzungsanleitung (Schritt fuer Schritt)
@@ -274,7 +278,7 @@ Diese Reihenfolge ist die empfohlene Bauanleitung fuer die spaetere Implementier
 
 ## 10. Nicht-funktionale Anforderungen fuer das Frontend
 
-- Ladezeit: Time to Interactive unter 2 Sekunden auf einer Standard-Breitbandverbindung, gemaess `architecture.md` Abschnitt 7.
+- Ladezeit: Time to Interactive unter 2 Sekunden auf einer Standard-Breitbandverbindung als Ziel gemaess `architecture.md` Abschnitt 5; dies ist kein Nachweis eines erreichten Produktions-SLOs.
 - Zugaenglichkeit: WCAG AA Kontrastverhaeltnisse fuer Text auf `bg-canvas`/`bg-surface`; alle interaktiven Elemente per Tastatur erreichbar; sichtbarer Fokus-Ring (`--focus-ring`).
 - Keine Speicherung sensibler Daten im Browser (kein LocalStorage fuer Tokens); Filter-/Pagination-Zustand bleibt teilbar und wird nicht als Secret behandelt.
 - Keine Inline-Secrets: `NEXT_PUBLIC_*`-Variablen sind nur fuer oeffentliche Konfiguration, `API_PROXY_SECRET` bleibt serverseitig und wird nicht ins Client-Bundle aufgenommen.
