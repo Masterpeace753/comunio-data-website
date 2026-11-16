@@ -60,6 +60,7 @@ class PlayerSummary(BaseModel):
     team_id: int | None
     team_name: str | None
     current_value_eur: int | None
+    club_name: str | None
 
 
 class PlayerDetail(PlayerSummary):

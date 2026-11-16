@@ -1,6 +1,6 @@
 export type Position = "TW" | "ABW" | "MITT" | "ST";
 export type Page<T> = { items: T[]; limit: number; offset: number; total: number };
-export type PlayerSummary = { id: number; comunio_player_id: number; name: string; position: Position; team_id: number | null; team_name: string | null; current_value_eur: number | null };
+export type PlayerSummary = { id: number; comunio_player_id: number; name: string; position: Position; club_name: string | null; team_id: number | null; team_name: string | null; current_value_eur: number | null };
 export type PlayerDetail = PlayerSummary & { source: string; first_seen_at: string; last_seen_at: string; updated_at: string };
 export type TeamSummary = { id: number; comunio_team_id: number; name: string; league: string | null; season: string | null; player_count: number };
 export type TeamDetail = TeamSummary & { updated_at: string };

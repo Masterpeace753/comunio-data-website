@@ -78,7 +78,7 @@ def test_players_returns_typed_page(monkeypatch) -> None:
     monkeypatch.setattr(
         api_app.repositories,
         "list_players",
-        lambda *args: ([(1, 1001, "Max", "MITT", None, None, 1250000)], 1),
+        lambda *args: ([(1, 1001, "Max", "MITT", 2, "Testteam", 1250000, "FC Bayern")], 1),
     )
 
     try:
@@ -94,9 +94,10 @@ def test_players_returns_typed_page(monkeypatch) -> None:
                 "comunio_player_id": 1001,
                 "name": "Max",
                 "position": "MITT",
-                "team_id": None,
-                "team_name": None,
+                "team_id": 2,
+                "team_name": "Testteam",
                 "current_value_eur": 1250000,
+                "club_name": "FC Bayern",
             }
         ],
         "limit": 10,

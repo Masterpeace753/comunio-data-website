@@ -99,6 +99,11 @@ history route was rejected as expected.
 
 ## Notes
 
+- Player responses include `club_name` (football club) separately from
+  `team_id`/`team_name` (Comunio owner). Apply migration
+  `005_player_club.sql` before deploying the updated API and ingest. Club names
+  and corrected owner assignments become available after the next successful
+  live snapshot; previously stored team assignments may be incorrect until then.
 - For deterministic local tests you can set `COMUNIO_SNAPSHOT_FILE` to a JSON file
   containing `teams`, `players`, and `market_values` arrays.
 - Secret providers support the existing AWS settings and optional mounted files:

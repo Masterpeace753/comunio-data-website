@@ -135,7 +135,7 @@ Ziel: schneller Ueberblick, angelehnt an das Referenzdesign (KPI-Kacheln oben, z
 ### 4.2 Spielerliste (`/spieler`)
 
 - Datenquelle: `GET /api/v1/players` (`limit`, `offset`, `team_id`, `position`, `search`).
-- UI: Tabelle mit Spalten Name, Position (`Badge`), Team, aktueller Marktwert (`current_value_eur`, formatiert als EUR), `Sparkline` (optional v2, benoetigt zusaetzliche History-Calls und wird daher erst nach v1 aktiviert), Aktion "Details".
+- UI: Tabelle mit Spalten Name (Link zum Spielerdetail), Position (`Badge`), Club (Bundesligaverein), Team (Comunio-Besitzer), aktueller Marktwert (`current_value_eur`, formatiert als EUR). Fehlende Zuordnungen werden als "-" angezeigt.
 - Filterleiste oberhalb der Tabelle: Textsuche (`search`), Team-Dropdown (`team_id`, gespeist aus `GET /api/v1/teams`), Position-Dropdown (`position` enum `TW/ABW/MITT/ST`).
 - Pagination: Standard `limit=25`, Seitensteuerung ueber `offset`; Gesamtzahl aus `total` anzeigen ("Zeige 1-25 von 412").
 - Mehrfachauswahl (Checkbox je Zeile, max. 5) fuer "Zum Vergleich hinzufuegen" -> fuehrt zu einer Vergleichsansicht (Modal oder eigene Route `/spieler/vergleich?ids=...`), die mehrere `GET /api/v1/players/{id}/history`-Aufrufe parallel in einem gemeinsamen Line-Chart darstellt (mehrere Farben aus der Akzentpalette + abgeleiteten Tonwerten).
