@@ -14,6 +14,13 @@ timer, API, and proxy are active on the VPS. The API has no published
 container port; external HTTPS traffic is served through Caddy. AWS files
 and deployment definitions are not changed.
 
+The proposed [VPS CD pipeline plan](../../docs/architecture/vps-cd-pipeline-plan.md)
+describes a future automated release process. It is not implemented or
+approved for production and does not replace the procedures in this runbook.
+The [self-hosted monitoring plan](../../docs/architecture/self-hosted-monitoring-plan.md)
+compares monitoring on this VPS with a separate monitoring VPS; it is also a
+proposal, not an installed or validated monitoring system.
+
 CI builds the Ingest and API images, checks the rendered Compose profiles and
 security boundaries with `python infra/vps/tests/test_compose.py`, checks the
 scheduler contract with `python infra/vps/tests/test_systemd.py`, verifies the
